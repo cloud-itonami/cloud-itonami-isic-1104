@@ -1,0 +1,12 @@
+{:itonami.blueprint/id "cloud-itonami-1104"
+ :itonami.blueprint/name "Soft Drink and Bottled Water Manufacturing Coordination"
+ :itonami.blueprint/isic-rev5 "1104"
+ :itonami.blueprint/domain :food/soft-drink-bottling
+ :itonami.blueprint/license "AGPL-3.0-or-later"
+ :itonami.blueprint/social-impact [:food-security :food-safety :fair-labor]
+ :itonami.blueprint/governor :softdrinkops-governor
+ :itonami.blueprint/robotics true
+ :itonami.blueprint/required-technologies [:robotics :identity :forms :dmn :bpmn :audit-ledger :cae]
+ :itonami.blueprint/optional-technologies [:optimization :telemetry]
+ :itonami.blueprint/status :public-oss
+ :itonami.blueprint/maturity :blueprint}
