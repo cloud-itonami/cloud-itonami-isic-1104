@@ -1,4 +1,4 @@
-{:itonami.blueprint/id "cloud-itonami-1104"
+{:itonami.blueprint/id "cloud-itonami-isic-1104"
  :itonami.blueprint/name "Soft Drink and Bottled Water Manufacturing Coordination"
  :itonami.blueprint/isic-rev5 "1104"
  :itonami.blueprint/domain :food/soft-drink-bottling
