@@ -176,3 +176,63 @@
   (testing "mineral content below minimum fails"
     (let [p (facts/product-type-by-id :water/mineral)]
       (is (false? (facts/mineral-content-meets-minimum? 100 p))))))
+
+;; ───────── Verified US CFR figures (2026-07-25) ─────────
+
+(deftest us-limits-carry-section-and-provenance
+  (let [c (facts/citation-coverage)]
+    (is (= 3 (:us-limit-groups c)))
+    (is (true? (:us-cited? c))))
+  (doseq [[k v] facts/us-regulatory-limits]
+    (is (re-find #"^21 CFR " (:section v)) (str k " must name its CFR section"))
+    (is (re-find #"govinfo\.gov" (:provenance v)) (str k " must cite official CFR XML"))))
+
+(deftest mineral-water-tds-floor-matches-165-110
+  (testing "165.110(a)(2)(iii): not less than 250 ppm TDS"
+    (is (= 250 (get-in facts/us-regulatory-limits [:mineral-water :min-tds-ppm])))
+    (is (true? (facts/mineral-water-tds-qualifies? 250)))
+    (is (false? (facts/mineral-water-tds-qualifies? 249.9)))
+    (is (nil? (facts/mineral-water-tds-qualifies? nil))))
+
+  (testing "the catalog's mineral-water style matches the statutory floor"
+    (is (= 250 (:mineral-content-min-mg-per-l
+                (facts/product-type-by-id :water/mineral)))))
+
+  (testing "reaching 250 by ADDING minerals disqualifies the claim"
+    (is (false? (facts/mineral-addition-permitted? :water/mineral))
+        "165.110(a)(2)(iii): No minerals may be added to this water")
+    (is (true? (facts/mineral-addition-permitted? :beverage/carbonated-soft-drink))
+        "the prohibition is specific to the mineral-water name")))
+
+(deftest preservative-ceiling-stays-under-the-fda-figure
+  (testing "184.1733(d): 0.1 percent = 1000 ppm; this catalog uses 200"
+    (is (= 1000.0 (get-in facts/us-regulatory-limits [:sodium-benzoate :fda-max-ppm])))
+    (doseq [id (keys facts/product-types)]
+      (is (true? (facts/preservative-ceiling-is-stricter-than-fda? id))
+          (str id " must not exceed the federal preservative figure")))
+    (is (= [] (:styles-with-preservative-over-fda-limit (facts/citation-coverage))))))
+
+(deftest microbial-gate-metric-mismatch-is-explicit
+  (testing "the gate counts plate count; the federal standard counts coliform"
+    (let [m (facts/microbial-gate-metric)]
+      (is (= :total-plate-count-cfu-per-ml (:gate-metric m)))
+      (is (= :total-coliform-mpn-per-100ml (:federal-metric m)))
+      (is (false? (:interchangeable? m))
+          "a passing CFU check must not be read as 165.110 compliance")))
+
+  (testing "the coliform figures are recorded verbatim-derived"
+    (let [c (:total-coliform facts/us-regulatory-limits)]
+      (is (= 9.2 (:mtf-absolute-max-mpn c)))
+      (is (= 1 (:mf-max-units-at-or-above-4 c)))
+      (is (= 1.0 (:mf-mean-max-per-100ml c)))
+      (is (true? (:e-coli-presence-adulterates? c)))))
+
+  (testing "coverage reports the mismatch rather than hiding it"
+    (is (false? (:microbial-gate-matches-federal-metric? (facts/citation-coverage))))))
+
+(deftest unverified-figures-are-named-not-implied
+  (let [c (facts/citation-coverage)]
+    (is (some #{:fill-volume-net-contents} (:uncited-figures c))
+        "NIST Handbook 133 / 21 CFR Part 101 were not fetched")
+    (is (some #{:jp-soft-drink-standards} (:uncited-figures c))
+        "the Japanese 清涼飲料水の規格基準 was not fetched")))

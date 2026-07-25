@@ -6,7 +6,8 @@
   contains pure lookup functions for regulatory/food-safety compliance
   checks -- the Governor calls these to independently validate proposals;
   the advisor's confidence is never sufficient on its own."
-  (:require [clojure.set :as set]))
+  (:require [clojure.set :as set]
+            [clojure.string :as str]))
 
 (def product-types
   "Valid soft-drink/bottled-water product categories and their safe
@@ -25,12 +26,61 @@
   count in the finished, sealed product -- source waters (mineral/bottled)
   carry a stricter ceiling than mixed/carbonated soft drinks because they
   have no thermal-processing or preservative barrier.
-  `fill-volume-target/tolerance-ml` is the standard-of-fill packaging
-  window (net-contents accuracy, e.g. US NIST Handbook 133 / 21 CFR
-  Part 101). `mineral-content-min-mg-per-l` is the minimum total-dissolved-
-  solids (TDS) mineral content a finished product must contain to legally
-  carry a \"mineral water\" label claim -- soft drinks and plain bottled/
-  purified water carry no such minimum (0)."
+  `fill-volume-target/tolerance-ml` is the net-contents packaging window.
+  `mineral-content-min-mg-per-l` is the minimum total-dissolved-solids (TDS)
+  a finished product must contain to carry a \"mineral water\" label claim --
+  soft drinks and plain bottled/purified water carry no such minimum (0).
+
+  CITATION PROVENANCE (2026-07-25). Verified against govinfo.gov's official
+  CFR XML and re-grepped against the raw markup. Machine-readable figures in
+  `us-regulatory-limits` below.
+
+  CONFIRMED. `:mineral-content-min-mg-per-l 250` for `:water/mineral` is
+  right. 21 CFR 165.110(a)(2)(iii) verbatim: \"The name of water containing
+  not less than 250 parts per million (ppm) total dissolved solids (TDS),
+  coming from a source tapped at one or more bore holes or springs,
+  originating from a geologically and physically protected underground water
+  source, may be 'mineral water'.\" The same paragraph adds a constraint this
+  catalog did not carry at all: \"No minerals may be added to this water.\"
+  Reaching 250 ppm by ADDING minerals is therefore not compliance -- it
+  disqualifies the label claim. Recorded as
+  `:minerals-may-be-added? false`.
+
+  METRIC MISMATCH -- the microbial gate measures a different quantity than
+  the standard it appears to implement. `microbial-load-max-cfu-per-ml` is a
+  total plate count. 21 CFR 165.110(b)(2)(i) does not set a plate-count
+  limit; it sets a TOTAL COLIFORM standard, verbatim: MTF method -- \"Not
+  more than one of the analytical units in the sample shall have a most
+  probable number (MPN) of 2.2 or more coliform organisms per 100
+  milliliters and no analytical unit shall have an MPN of 9.2 or more
+  coliform organisms per 100 milliliters\"; MF method -- \"Not more than one
+  of the analytical units in the sample shall have 4.0 or more coliform
+  organisms per 100 milliliters and the arithmetic mean of the coliform
+  density of the sample shall not exceed one coliform organism per 100
+  milliliters\"; and separately, \"If E. coli is present, then the bottled
+  water will be deemed adulterated\".
+
+  Total plate count and total coliform are not interchangeable -- a product
+  can carry a high plate count with zero coliforms, or the reverse. So the
+  CFU/mL ceilings here are this actor's own quality window, NOT the federal
+  standard, and passing them says nothing about 165.110 compliance. The
+  coliform figures are recorded so the gap is explicit; the CFU gate is left
+  in place because removing a quality check would only loosen this actor,
+  and adding a coliform check needs the proposal to carry coliform test
+  results, which is a design change rather than a fact fix.
+
+  PRESERVATIVE CEILING IS THIS ACTOR'S, NOT THE FDA'S. `preservative-max-ppm
+  200` is roughly five times STRICTER than the federal figure: sodium
+  benzoate is GRAS under 21 CFR 184.1733(d), verbatim \"The ingredient is
+  used in food at levels not to exceed good manufacturing practice. Current
+  usage results in a maximum level of 0.1 percent in food\" -- 0.1 percent is
+  1000 ppm. Being stricter is fine and is kept; describing 200 as though it
+  were the regulatory maximum was not.
+
+  NOT VERIFIED IN THIS PASS: the fill/net-contents figures (NIST Handbook
+  133 / 21 CFR Part 101) and the Japanese 清涼飲料水の規格基準 under the
+  食品衛生法. No source was fetched for either, so `citation-coverage`
+  reports them as uncited rather than implying they were checked."
   {:beverage/carbonated-soft-drink
    {:id :beverage/carbonated-soft-drink
     :name "炭酸清涼飲料水"
@@ -82,6 +132,94 @@
     :fill-volume-target-ml 500
     :fill-volume-tolerance-ml 10
     :mineral-content-min-mg-per-l 0}})
+
+(def us-regulatory-limits
+  "US figures verified against govinfo.gov official CFR XML on 2026-07-25.
+  Each group names the section it came from so a reader can re-check it."
+  {:mineral-water
+   {:min-tds-ppm 250
+    :minerals-may-be-added? false     ; "No minerals may be added to this water."
+    :section "21 CFR 165.110(a)(2)(iii)"
+    :provenance "https://www.govinfo.gov/content/pkg/CFR-2024-title21-vol2/xml/CFR-2024-title21-vol2-sec165-110.xml"}
+   :total-coliform
+   ;; The federal microbiological standard for bottled water. NOT a plate count.
+   {:mtf-max-units-at-or-above-mpn-2_2 1   ; at most one unit may reach MPN 2.2
+    :mtf-absolute-max-mpn 9.2              ; no unit may reach MPN 9.2
+    :mf-max-units-at-or-above-4 1          ; at most one unit may reach 4.0/100 mL
+    :mf-mean-max-per-100ml 1.0             ; arithmetic mean must not exceed 1
+    :e-coli-presence-adulterates? true
+    :section "21 CFR 165.110(b)(2)(i)"
+    :provenance "https://www.govinfo.gov/content/pkg/CFR-2024-title21-vol2/xml/CFR-2024-title21-vol2-sec165-110.xml"}
+   :sodium-benzoate
+   {:fda-max-ppm 1000.0                    ; 0.1 percent in food
+    :section "21 CFR 184.1733(d)"
+    :provenance "https://www.govinfo.gov/content/pkg/CFR-2024-title21-vol3/xml/CFR-2024-title21-vol3-sec184-1733.xml"}})
+
+(def uncited-figures
+  "Figures this catalog uses that NO fetched source backs. Listed so coverage
+  reporting cannot imply they were checked."
+  #{:fill-volume-net-contents   ; NIST Handbook 133 / 21 CFR Part 101, not fetched
+    :jp-soft-drink-standards})  ; 食品衛生法 清涼飲料水の規格基準, not fetched
+
+(defn mineral-water-tds-qualifies?
+  "Does `tds-mg-per-l` meet the 250 ppm floor for a 'mineral water' name?
+  nil for a non-numeric input rather than a permissive default."
+  [tds-mg-per-l]
+  (when (number? tds-mg-per-l)
+    (>= tds-mg-per-l (get-in us-regulatory-limits [:mineral-water :min-tds-ppm]))))
+
+(defn mineral-addition-permitted?
+  "Always false for mineral water: 165.110(a)(2)(iii) forbids adding minerals,
+  so reaching the 250 ppm floor by addition disqualifies the claim rather than
+  satisfying it."
+  [product-type-id]
+  (if (= product-type-id :water/mineral)
+    (get-in us-regulatory-limits [:mineral-water :minerals-may-be-added?])
+    true))
+
+(defn preservative-ceiling-is-stricter-than-fda?
+  "Is this catalog's preservative ceiling at or below the federal figure?
+  True is the safe direction; this exists so a future loosening is caught."
+  [product-type-id]
+  (when-let [pt (get product-types product-type-id)]
+    (<= (:preservative-max-ppm pt)
+        (get-in us-regulatory-limits [:sodium-benzoate :fda-max-ppm]))))
+
+(defn microbial-gate-metric
+  "What the `microbial-load-max-cfu-per-ml` gate actually measures, and what
+  the federal standard measures. Deliberately explicit: these differ, so a
+  passing CFU check does not imply 165.110 compliance."
+  []
+  {:gate-metric :total-plate-count-cfu-per-ml
+   :federal-metric :total-coliform-mpn-per-100ml
+   :interchangeable? false
+   :federal-standard (:total-coliform us-regulatory-limits)
+   :note (str "A product can carry a high plate count with zero coliforms, or "
+              "the reverse. The CFU ceilings in product-types are this actor's "
+              "own quality window; 21 CFR 165.110(b)(2)(i) sets coliform limits "
+              "and this catalog does not model coliform test results at all.")})
+
+(defn citation-coverage
+  "Honest coverage: what rests on a fetched source and what explicitly does not."
+  []
+  {:us-limit-groups (count us-regulatory-limits)
+   :us-cited? (every? (fn [[_ v]] (and (string? (:section v))
+                                       (string? (:provenance v))
+                                       (str/starts-with? (:provenance v) "http")))
+                      us-regulatory-limits)
+   :uncited-figures (vec (sort uncited-figures))
+   :microbial-gate-matches-federal-metric? false
+   :styles-with-preservative-over-fda-limit
+   (vec (sort (remove preservative-ceiling-is-stricter-than-fda? (keys product-types))))
+   :note (str "cloud-itonami-isic-1104: " (count us-regulatory-limits)
+              " US limit groups verified against govinfo.gov CFR XML "
+              "(165.110(a)(2)(iii), 165.110(b)(2)(i), 184.1733(d)). The 250 ppm "
+              "mineral-water TDS floor is confirmed, and the accompanying 'No "
+              "minerals may be added' constraint is now recorded. The microbial "
+              "gate measures plate count while the federal standard measures "
+              "coliform -- reported as a metric mismatch rather than as "
+              "compliance. Fill/net-contents and the Japanese 清涼飲料水の規格基準 "
+              "were NOT fetched in this pass and are listed in uncited-figures.")})
 
 (defn product-type-by-id [id]
   (get product-types id))
