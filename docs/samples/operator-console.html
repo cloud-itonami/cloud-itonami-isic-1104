@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light"><title>Operator console · cloud-itonami-isic-1104 · softdrinkops</title><style>body{font:14px/1.6 system-ui,-apple-system,'Hiragino Sans','Noto Sans JP',sans-serif;margin:0;color:#1a1a1c;background:#f2f4f7}.bar{background:#0031d8;color:#fff;padding:1.1rem 2rem}.bar h1{margin:0;font-size:1.1rem;font-weight:600}.bar .badge{display:inline-block;margin-top:.4rem;font-size:.76rem;opacity:.9}main{max-width:1180px;margin:1.4rem auto;padding:0 1rem}.card{background:#fff;border-radius:8px;padding:1.1rem 1.3rem;margin-bottom:1.1rem;box-shadow:0 1px 3px rgba(0,0,0,.09)}.card h2{margin:0 0 .3rem;font-size:1rem}.muted{color:#6b6b70;font-size:.82rem}p.muted{margin:.2rem 0 .8rem}table{border-collapse:collapse;width:100%;font-size:.83rem}th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid #ececf0;vertical-align:top}th{font-weight:600;color:#4a4a52;background:#fafafc}td.num{text-align:right;font-variant-numeric:tabular-nums}.ok{color:#00662a}.warn{color:#8a5b00}.critical{color:#b91414;font-weight:600}tr.human td{background:#fbfaf4}.human-tag{display:inline-block;background:#8a5b00;color:#fff;border-radius:3px;padding:.02rem .3rem;font-size:.72rem;margin-right:.35rem}code{background:#f0f0f4;padding:.08rem .28rem;border-radius:3px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.79rem}ul{margin:.2rem 0 .2rem 1.1rem;padding:0}li{margin:.15rem 0}footer{max-width:1180px;margin:0 auto 2rem;padding:0 1rem;color:#6b6b70;font-size:.78rem}</style></head>
+<body>
+<header class="bar">
+  <h1>Soft drink &amp; bottled water manufacturing coordination (ISIC 1104) — Operator Console</h1>
+  <div class="badge">read-only sample · generated at build time by <code>softdrinkops.render-html</code> from the real Governor · not equipment control · not certification authority</div>
+</header>
+<main>
+  <section class="card">
+    <h2>Production batches</h2>
+    <p class="muted">Registered plant records from <code>softdrinkops.store/seed-db</code>. Every number below is a documented batch key — no presentation-only field. Filling-line calibration dates are in the seed and are read by the Governor, but are not shown here because they are measured against the current clock and would make this page non-reproducible.</p>
+    <table>
+      <thead><tr><th>Batch</th><th>Product</th><th>Jurisdiction</th><th>CO₂ vol</th><th>Brix %</th><th>Preserv. ppm</th><th>CFU/mL</th><th>TDS mg/L</th><th>Fill var. mL</th><th>CIP</th><th>Plant state / last Governor disposition</th></tr></thead>
+      <tbody>
+        <tr><td><code>batch-1104-01</code></td><td>炭酸清涼飲料水</td><td>日本 (食品衛生法・清涼飲料水の規格基準, 厚生労働省/消費者庁)</td><td class="num">3.5</td><td class="num">10.2</td><td class="num">45</td><td class="num">20</td><td class="num">0</td><td class="num">4</td><td>88</td><td><span class="ok">logged &amp; shipment finalized</span><br><span class="critical">HARD hold · already-shipment-finalized</span></td></tr>
+        <tr><td><code>batch-1104-02</code></td><td>ミネラルウォーター(natural mineral water)</td><td>European Union (Reg (EC) 1333/2008 / Directive 2009/54/EC)</td><td class="num">0.0</td><td class="num">0.1</td><td class="num">0</td><td class="num">8</td><td class="num">180</td><td class="num">3</td><td>90</td><td><span class="muted">not yet logged</span><br><span class="critical">HARD hold · mineral-content-below-minimum</span></td></tr>
+        <tr><td><code>batch-1104-03</code></td><td>ボトルドウォーター(purified/spring water, other bottled waters)</td><td>United States (FDA 21 CFR Part 165 / Part 110 / Part 101)</td><td class="num">0.0</td><td class="num">0.2</td><td class="num">0</td><td class="num">65</td><td class="num">40</td><td class="num">5</td><td>82</td><td><span class="muted">not yet logged</span><br><span class="warn">escalated to operator</span></td></tr>
+        <tr><td><code>batch-1104-04</code></td><td>炭酸清涼飲料水</td><td>United States (FDA 21 CFR Part 165 / Part 110 / Part 101)</td><td class="num">2.6</td><td class="num">14.5</td><td class="num">40</td><td class="num">30</td><td class="num">0</td><td class="num">6</td><td>84</td><td><span class="muted">not yet logged</span><br><span class="critical">HARD hold · carbonation-out-of-tolerance, brix-out-of-range</span></td></tr>
+        <tr><td><code>batch-1104-05</code></td><td>非炭酸清涼飲料水(果汁・フレーバー飲料)</td><td>日本 (食品衛生法・清涼飲料水の規格基準, 厚生労働省/消費者庁)</td><td class="num">0.0</td><td class="num">11.0</td><td class="num">120</td><td class="num">40</td><td class="num">0</td><td class="num">7</td><td>68</td><td><span class="muted">not yet logged</span><br><span class="critical">HARD hold · evidence-incomplete, additive-label-mismatch, sanitation-score-insufficient</span></td></tr>
+        <tr><td><code>batch-1104-06</code></td><td>炭酸清涼飲料水</td><td>United States (FDA 21 CFR Part 165 / Part 110 / Part 101)</td><td class="num">3.4</td><td class="num">9.5</td><td class="num">30</td><td class="num">15</td><td class="num">0</td><td class="num">22</td><td>79</td><td><span class="muted">not yet logged</span><br><span class="critical">HARD hold · contamination-detected, filling-line-calibration-overdue, fill-volume-variance-excessive</span></td></tr>
+        <tr><td><code>batch-1104-07</code></td><td>ミネラルウォーター(natural mineral water)</td><td>日本 (食品衛生法・清涼飲料水の規格基準, 厚生労働省/消費者庁)</td><td class="num">0.0</td><td class="num">0.2</td><td class="num">12</td><td class="num">10</td><td class="num">320</td><td class="num">5</td><td>91</td><td><span class="muted">not yet logged</span><br><span class="critical">HARD hold · preservative-exceeds-max</span></td></tr>
+        <tr><td><code>batch-1104-08</code></td><td>非炭酸清涼飲料水(果汁・フレーバー飲料)</td><td>United States (FDA 21 CFR Part 165 / Part 110 / Part 101)</td><td class="num">0.0</td><td class="num">9.0</td><td class="num">60</td><td class="num">25</td><td class="num">0</td><td class="num">5</td><td>86</td><td><span class="muted">not yet logged</span><br><span class="critical">HARD hold · no-spec-basis</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>Action gate</h2>
+    <p class="muted">Derived from <code>softdrinkops.governor</code>'s own <code>allowed-ops</code>, <code>high-stakes</code>, <code>always-escalate-ops</code> and <code>confidence-floor</code> — not from prose. Anything outside this closed allowlist (direct mixing / carbonation / filling-line control, or a food-safety-certification decision) is refused unconditionally as <code>op-not-allowed</code>.</p>
+    <table>
+      <thead><tr><th>Proposal op</th><th>Gate</th></tr></thead>
+      <tbody>
+        <tr><td><code>coordinate-shipment</code></td><td><span class="warn">ALWAYS human sign-off — real actuation event</span></td></tr>
+        <tr><td><code>flag-food-safety-concern</code></td><td><span class="warn">ALWAYS human sign-off — never auto-resolved by confidence</span></td></tr>
+        <tr><td><code>log-production-batch</code></td><td><span class="warn">ALWAYS human sign-off — real actuation event</span></td></tr>
+        <tr><td><code>schedule-maintenance</code></td><td><span class="ok">auto-commit when the Governor is clean and confidence &ge; 0.6</span></td></tr>
+        <tr><td><code>anything else</code></td><td><span class="critical">HARD HOLD · op-not-allowed — the actor has no authority to make the proposal at all</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>This run</h2>
+    <p class="muted">17 proposals driven through <code>operation/run-operation</code>, 12 of them HARD-held by the Governor on 17 distinct rules. Rows shaded in amber are human operator actions taken outside the actor — the Governor escalated, a person signed off, and <code>store/log-batch</code> / <code>store/finalize-shipment</code> moved the plant record.</p>
+    <table>
+      <thead><tr><th>Step</th><th>Op</th><th>Batch</th><th>Disposition</th><th>Rules fired</th></tr></thead>
+      <tbody>
+        <tr><td>clean maintenance proposal</td><td><code>schedule-maintenance</code></td><td>batch-1104-08</td><td><span class="ok">COMMIT — Governor clean, no sign-off required</span></td><td><span class="muted">—</span></td></tr>
+        <tr><td>same proposal, low advisor confidence</td><td><code>schedule-maintenance</code></td><td>batch-1104-08</td><td><span class="warn">ESCALATE — human sign-off required</span></td><td><span class="muted">no rule violated — escalation is the gate itself</span></td></tr>
+        <tr><td>batch log with no jurisdiction citation</td><td><code>log-production-batch</code></td><td>batch-1104-08</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>no-spec-basis</code></td></tr>
+        <tr><td>direct filling-line actuation (outside the allowlist)</td><td><code>actuate-filling-line</code></td><td>batch-1104-01</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>op-not-allowed</code></td></tr>
+        <tr><td>plant food-safety certification (outside the allowlist)</td><td><code>certify-food-safety</code></td><td>batch-1104-01</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>op-not-allowed</code></td></tr>
+        <tr><td>maintenance proposal claiming direct write authority</td><td><code>schedule-maintenance</code></td><td>batch-1104-01</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>effect-not-propose</code></td></tr>
+        <tr><td>log a clean batch (actuation)</td><td><code>log-production-batch</code></td><td>batch-1104-01</td><td><span class="warn">ESCALATE — human sign-off required</span></td><td><span class="muted">no rule violated — escalation is the gate itself</span></td></tr>
+        <tr class="human"><td>operator signs off the batch log</td><td>—</td><td>batch-1104-01</td><td colspan="2"><span class="human-tag">operator action, outside the actor</span> plant record moved by <code>store/log-batch</code></td></tr>
+        <tr><td>the same batch log, proposed again</td><td><code>log-production-batch</code></td><td>batch-1104-01</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>already-processed</code></td></tr>
+        <tr><td>coordinate the outbound shipment (actuation)</td><td><code>coordinate-shipment</code></td><td>batch-1104-01</td><td><span class="warn">ESCALATE — human sign-off required</span></td><td><span class="muted">no rule violated — escalation is the gate itself</span></td></tr>
+        <tr class="human"><td>operator signs off the shipment</td><td>—</td><td>batch-1104-01</td><td colspan="2"><span class="human-tag">operator action, outside the actor</span> plant record moved by <code>store/finalize-shipment</code></td></tr>
+        <tr><td>the same shipment, coordinated again</td><td><code>coordinate-shipment</code></td><td>batch-1104-01</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>already-shipment-finalized</code></td></tr>
+        <tr><td>log a mineral water under the TDS floor</td><td><code>log-production-batch</code></td><td>batch-1104-02</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>mineral-content-below-minimum</code></td></tr>
+        <tr><td>log a bottled water over the microbial action level</td><td><code>log-production-batch</code></td><td>batch-1104-03</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>microbial-load-exceeded, food-safety-flag-unresolved</code></td></tr>
+        <tr><td>raise the food-safety concern on that water</td><td><code>flag-food-safety-concern</code></td><td>batch-1104-03</td><td><span class="warn">ESCALATE — human sign-off required</span></td><td><span class="muted">no rule violated — escalation is the gate itself</span></td></tr>
+        <tr><td>log a soft drink off both carbonation and Brix</td><td><code>log-production-batch</code></td><td>batch-1104-04</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>carbonation-out-of-tolerance, brix-out-of-range</code></td></tr>
+        <tr><td>log a still drink with thin evidence and an undeclared preservative</td><td><code>log-production-batch</code></td><td>batch-1104-05</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>evidence-incomplete, additive-label-mismatch, sanitation-score-insufficient</code></td></tr>
+        <tr><td>log a batch with detected contamination</td><td><code>log-production-batch</code></td><td>batch-1104-06</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>contamination-detected, filling-line-calibration-overdue, fill-volume-variance-excessive</code></td></tr>
+        <tr><td>log a mineral water carrying added preservative</td><td><code>log-production-batch</code></td><td>batch-1104-07</td><td><span class="critical">HARD HOLD — un-overridable</span></td><td><code>preservative-exceeds-max</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>HARD holds, in the Governor's own words</h2>
+    <p class="muted">Rule names and explanations are read out of the <code>:violations</code> maps <code>softdrinkops.governor</code> produced during this run.</p>
+    <ul>
+      <li><code>log-production-batch</code> &middot; <strong>batch-1104-08</strong>
+        <ul>
+          <li><code>no-spec-basis</code> — 公式仕様の引用が無い提案は法域要件として扱えない</li>
+        </ul>
+      </li>
+      <li><code>actuate-filling-line</code> &middot; <strong>batch-1104-01</strong>
+        <ul>
+          <li><code>op-not-allowed</code> — :actuate-filling-line はこのactorの許可された提案種別 (log-production-batch/schedule-maintenance/flag-food-safety-concern/coordinate-shipment) に含まれない -- 混合/炭酸注入/充填ライン制御や食品安全認証の権限はこのactorに無い</li>
+        </ul>
+      </li>
+      <li><code>certify-food-safety</code> &middot; <strong>batch-1104-01</strong>
+        <ul>
+          <li><code>op-not-allowed</code> — :certify-food-safety はこのactorの許可された提案種別 (log-production-batch/schedule-maintenance/flag-food-safety-concern/coordinate-shipment) に含まれない -- 混合/炭酸注入/充填ライン制御や食品安全認証の権限はこのactorに無い</li>
+        </ul>
+      </li>
+      <li><code>schedule-maintenance</code> &middot; <strong>batch-1104-01</strong>
+        <ul>
+          <li><code>effect-not-propose</code> — この actor の提案は :propose 以外の :effect を持てない (got :commit)</li>
+        </ul>
+      </li>
+      <li><code>log-production-batch</code> &middot; <strong>batch-1104-01</strong>
+        <ul>
+          <li><code>already-processed</code> — batch-1104-01 は既に登録済み</li>
+        </ul>
+      </li>
+      <li><code>coordinate-shipment</code> &middot; <strong>batch-1104-01</strong>
+        <ul>
+          <li><code>already-shipment-finalized</code> — batch-1104-01 は既に出荷確定済み</li>
+        </ul>
+      </li>
+      <li><code>log-production-batch</code> &middot; <strong>batch-1104-02</strong>
+        <ul>
+          <li><code>mineral-content-below-minimum</code> — batch-1104-02 のミネラル分(180 mg/L)がミネラルウォーター表示の最低要件(250 mg/L)を下回る -- バッチ登録提案は進められない</li>
+        </ul>
+      </li>
+      <li><code>log-production-batch</code> &middot; <strong>batch-1104-03</strong>
+        <ul>
+          <li><code>microbial-load-exceeded</code> — batch-1104-03 の生菌数(65 CFU/mL)が規制上限(20 CFU/mL)を超過 -- バッチ登録提案は進められない</li>
+          <li><code>food-safety-flag-unresolved</code> — batch-1104-03 は未解決の食品安全フラグがある -- バッチ登録提案は進められない</li>
+        </ul>
+      </li>
+      <li><code>log-production-batch</code> &middot; <strong>batch-1104-04</strong>
+        <ul>
+          <li><code>carbonation-out-of-tolerance</code> — batch-1104-04 の炭酸ガス圧(2.6 vol)が製品規格の許容誤差(target 3.5 vol ±0.3 vol)を外れる -- バッチ登録提案は進められない</li>
+          <li><code>brix-out-of-range</code> — batch-1104-04 の糖度(14.5 Brix)が製品規格の範囲外 -- バッチ登録提案は進められない</li>
+        </ul>
+      </li>
+      <li><code>log-production-batch</code> &middot; <strong>batch-1104-05</strong>
+        <ul>
+          <li><code>evidence-incomplete</code> — 法域の必要書類(water-source-record/mixing-log/carbonation-log/brix-test/co2-volumes-test/microbial-test等)が充足していない状態での提案</li>
+          <li><code>additive-label-mismatch</code> — batch-1104-05 の保存料/添加物宣言が不完全 -- バッチ登録提案は進められない</li>
+          <li><code>sanitation-score-insufficient</code> — batch-1104-05 の工場衛生スコア(68)が最低要件(75)を下回る -- バッチ登録提案は進められない</li>
+        </ul>
+      </li>
+      <li><code>log-production-batch</code> &middot; <strong>batch-1104-06</strong>
+        <ul>
+          <li><code>contamination-detected</code> — batch-1104-06 で異物混入または異臭/腐敗マーカーが検出された -- バッチ登録提案は進められない</li>
+          <li><code>filling-line-calibration-overdue</code> — batch-1104-06 の充填ライン計量機校正が期限切れ -- バッチ登録提案は進められない</li>
+          <li><code>fill-volume-variance-excessive</code> — batch-1104-06 の充填量分散(22mL)が許容範囲(15mL)を超過 -- バッチ登録提案は進められない</li>
+        </ul>
+      </li>
+      <li><code>log-production-batch</code> &middot; <strong>batch-1104-07</strong>
+        <ul>
+          <li><code>preservative-exceeds-max</code> — batch-1104-07 の保存料残留量(12 ppm)が製品規格上限(0 ppm)を超過 -- バッチ登録提案は進められない</li>
+        </ul>
+      </li>
+    </ul>
+  </section>
+  <section class="card">
+    <h2>Audit ledger (this run)</h2>
+    <p class="muted">The append-only ledger as <code>store/append-fact</code> left it. Every row is a <code>:governor-hold</code>, because <code>operation/run-operation</code> returns <code>:facts []</code> on a clean verdict and emits no commit fact — so the two operator sign-offs above have no ledger row. That is a real gap in this actor, stated rather than papered over.</p>
+    <table>
+      <thead><tr><th>Fact</th><th>Op</th><th>Batch</th><th>Disposition</th><th>Basis</th><th>Confidence</th></tr></thead>
+      <tbody>
+        <tr><td>governor-hold</td><td><code>schedule-maintenance</code></td><td>batch-1104-08</td><td>hold</td><td><span class="muted">escalation gate (no rule violated)</span></td><td class="num">0.41</td></tr>
+        <tr><td>governor-hold</td><td><code>log-production-batch</code></td><td>batch-1104-08</td><td>hold</td><td><code>no-spec-basis</code></td><td class="num">0.88</td></tr>
+        <tr><td>governor-hold</td><td><code>actuate-filling-line</code></td><td>batch-1104-01</td><td>hold</td><td><code>op-not-allowed</code></td><td class="num">0.99</td></tr>
+        <tr><td>governor-hold</td><td><code>certify-food-safety</code></td><td>batch-1104-01</td><td>hold</td><td><code>op-not-allowed</code></td><td class="num">0.99</td></tr>
+        <tr><td>governor-hold</td><td><code>schedule-maintenance</code></td><td>batch-1104-01</td><td>hold</td><td><code>effect-not-propose</code></td><td class="num">0.93</td></tr>
+        <tr><td>governor-hold</td><td><code>log-production-batch</code></td><td>batch-1104-01</td><td>hold</td><td><span class="muted">escalation gate (no rule violated)</span></td><td class="num">0.94</td></tr>
+        <tr><td>governor-hold</td><td><code>log-production-batch</code></td><td>batch-1104-01</td><td>hold</td><td><code>already-processed</code></td><td class="num">0.94</td></tr>
+        <tr><td>governor-hold</td><td><code>coordinate-shipment</code></td><td>batch-1104-01</td><td>hold</td><td><span class="muted">escalation gate (no rule violated)</span></td><td class="num">0.9</td></tr>
+        <tr><td>governor-hold</td><td><code>coordinate-shipment</code></td><td>batch-1104-01</td><td>hold</td><td><code>already-shipment-finalized</code></td><td class="num">0.9</td></tr>
+        <tr><td>governor-hold</td><td><code>log-production-batch</code></td><td>batch-1104-02</td><td>hold</td><td><code>mineral-content-below-minimum</code></td><td class="num">0.91</td></tr>
+        <tr><td>governor-hold</td><td><code>log-production-batch</code></td><td>batch-1104-03</td><td>hold</td><td><code>microbial-load-exceeded, food-safety-flag-unresolved</code></td><td class="num">0.89</td></tr>
+        <tr><td>governor-hold</td><td><code>flag-food-safety-concern</code></td><td>batch-1104-03</td><td>hold</td><td><span class="muted">escalation gate (no rule violated)</span></td><td class="num">0.97</td></tr>
+        <tr><td>governor-hold</td><td><code>log-production-batch</code></td><td>batch-1104-04</td><td>hold</td><td><code>carbonation-out-of-tolerance, brix-out-of-range</code></td><td class="num">0.86</td></tr>
+        <tr><td>governor-hold</td><td><code>log-production-batch</code></td><td>batch-1104-05</td><td>hold</td><td><code>evidence-incomplete, additive-label-mismatch, sanitation-score-insufficient</code></td><td class="num">0.83</td></tr>
+        <tr><td>governor-hold</td><td><code>log-production-batch</code></td><td>batch-1104-06</td><td>hold</td><td><code>contamination-detected, filling-line-calibration-overdue, fill-volume-variance-excessive</code></td><td class="num">0.9</td></tr>
+        <tr><td>governor-hold</td><td><code>log-production-batch</code></td><td>batch-1104-07</td><td>hold</td><td><code>preservative-exceeds-max</code></td><td class="num">0.92</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+<footer>Regenerate with <code>clojure -M:dev:render-html</code>. Output is byte-identical across runs. Hard rules exercised by this scenario: 17; <code>batch-not-registered</code> is not exercised, because reaching it requires driving a batch id the seed never registered.</footer>
+</body>
+</html>
