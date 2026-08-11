@@ -32,6 +32,199 @@
   The ledger (`:facts`) is a separate append-only vector of audit facts,
   kept alongside `:batches` in the same store value.")
 
+(def full-evidence-checklist
+  "The evidence items every jurisdiction in `softdrinkops.facts/jurisdictions`
+  currently requires (all three lists are identical today). Kept here so seed
+  records state the checklist once instead of re-typing it per batch; the
+  Governor still resolves the requirement from the jurisdiction, never from
+  this vector."
+  [:water-source-record
+   :mixing-log
+   :carbonation-log
+   :brix-test
+   :co2-volumes-test
+   :microbial-test
+   :mineral-content-test
+   :fill-volume-check])
+
+(defn seed-db
+  "Reference plant records for a demo/simulation run: eight independently
+  verified and registered production batches plus an empty audit ledger,
+  in the same `{:batches {...} :facts [...]}` shape the rest of this
+  namespace operates on.
+
+  Every key used here is one of the batch keys documented in this
+  namespace's docstring -- no field is invented for presentation.
+
+  `now-epoch-ms` is supplied by the caller rather than read from the host
+  clock, so this namespace (like `softdrinkops.registry`) stays free of
+  `System/currentTimeMillis` / `js/Date.now`; `softdrinkops.governor` keeps
+  the single host-clock call site in the actor stack. Calibration dates are
+  expressed as offsets from it because
+  `registry/filling-line-calibration-overdue?` measures against the current
+  time, so a fixed absolute epoch would silently flip from current to
+  overdue as the file aged.
+
+  The records are deliberately mixed: some are clean, some carry a real
+  production-parameter defect (carbonation drift, Brix drift, preservative
+  residue over the product ceiling, microbial load over the action level,
+  mineral content under the \"mineral water\" floor, detected contamination,
+  overdue filling-line calibration, excessive fill-volume variance,
+  incomplete evidence, an undeclared preservative, an insufficient CIP
+  sanitation score, an unresolved food-safety flag), so that a driver can
+  exercise the Governor's hard rules against real batch metadata rather
+  than against hand-written verdicts. None is pre-marked `:processed?` or
+  `:shipment-finalized?` -- those flags are set only by `log-batch` /
+  `finalize-shipment` once a proposal has actually been signed off."
+  [now-epoch-ms]
+  (let [days-ago (fn [n] (- now-epoch-ms (* n 24 60 60 1000)))]
+    {:batches
+     {"batch-1104-01"
+      {:product-type :beverage/carbonated-soft-drink
+       :jurisdiction :jp/mhlw
+       :co2-volumes 3.5
+       :brix-percent 10.2
+       :preservative-ppm 45
+       :microbial-load-cfu-per-ml 20
+       :mineral-content-mg-per-l 0
+       :fill-volume-ml 500
+       :fill-volume-variance-ml 4
+       :contamination-detected? false
+       :sanitation-score 88
+       :filling-line-last-calibration-date (days-ago 10)
+       :declared-additives #{:preservatives}
+       :evidence-checklist full-evidence-checklist
+       :safety-concern-raised? false}
+
+      "batch-1104-02"
+      {:product-type :water/mineral
+       :jurisdiction :eu/dg-sante
+       :co2-volumes 0.0
+       :brix-percent 0.1
+       :preservative-ppm 0
+       :microbial-load-cfu-per-ml 8
+       :mineral-content-mg-per-l 180
+       :fill-volume-ml 500
+       :fill-volume-variance-ml 3
+       :contamination-detected? false
+       :sanitation-score 90
+       :filling-line-last-calibration-date (days-ago 20)
+       :declared-additives #{}
+       :evidence-checklist full-evidence-checklist
+       :safety-concern-raised? false}
+
+      "batch-1104-03"
+      {:product-type :water/bottled
+       :jurisdiction :us/fda
+       :co2-volumes 0.0
+       :brix-percent 0.2
+       :preservative-ppm 0
+       :microbial-load-cfu-per-ml 65
+       :mineral-content-mg-per-l 40
+       :fill-volume-ml 500
+       :fill-volume-variance-ml 5
+       :contamination-detected? false
+       :sanitation-score 82
+       :filling-line-last-calibration-date (days-ago 15)
+       :declared-additives #{}
+       :evidence-checklist full-evidence-checklist
+       :safety-concern-raised? true
+       :safety-concern-resolved? false}
+
+      "batch-1104-04"
+      {:product-type :beverage/carbonated-soft-drink
+       :jurisdiction :us/fda
+       :co2-volumes 2.6
+       :brix-percent 14.5
+       :preservative-ppm 40
+       :microbial-load-cfu-per-ml 30
+       :mineral-content-mg-per-l 0
+       :fill-volume-ml 500
+       :fill-volume-variance-ml 6
+       :contamination-detected? false
+       :sanitation-score 84
+       :filling-line-last-calibration-date (days-ago 8)
+       :declared-additives #{:preservatives}
+       :evidence-checklist full-evidence-checklist
+       :safety-concern-raised? false}
+
+      "batch-1104-05"
+      {:product-type :beverage/still-flavored
+       :jurisdiction :jp/mhlw
+       :co2-volumes 0.0
+       :brix-percent 11.0
+       :preservative-ppm 120
+       :microbial-load-cfu-per-ml 40
+       :mineral-content-mg-per-l 0
+       :fill-volume-ml 500
+       :fill-volume-variance-ml 7
+       :contamination-detected? false
+       :sanitation-score 68
+       :filling-line-last-calibration-date (days-ago 30)
+       :declared-additives #{}
+       :evidence-checklist [:water-source-record :mixing-log :carbonation-log
+                            :brix-test :co2-volumes-test :fill-volume-check]
+       :safety-concern-raised? false}
+
+      "batch-1104-06"
+      {:product-type :beverage/carbonated-soft-drink
+       :jurisdiction :us/fda
+       :co2-volumes 3.4
+       :brix-percent 9.5
+       :preservative-ppm 30
+       :microbial-load-cfu-per-ml 15
+       :mineral-content-mg-per-l 0
+       :fill-volume-ml 500
+       :fill-volume-variance-ml 22
+       :contamination-detected? true
+       :sanitation-score 79
+       :filling-line-last-calibration-date (days-ago 120)
+       :declared-additives #{:preservatives}
+       :evidence-checklist full-evidence-checklist
+       :safety-concern-raised? false}
+
+      "batch-1104-07"
+      {:product-type :water/mineral
+       :jurisdiction :jp/mhlw
+       :co2-volumes 0.0
+       :brix-percent 0.2
+       :preservative-ppm 12
+       :microbial-load-cfu-per-ml 10
+       :mineral-content-mg-per-l 320
+       :fill-volume-ml 500
+       :fill-volume-variance-ml 5
+       :contamination-detected? false
+       :sanitation-score 91
+       :filling-line-last-calibration-date (days-ago 12)
+       :declared-additives #{:preservatives}
+       :evidence-checklist full-evidence-checklist
+       :safety-concern-raised? false}
+
+      "batch-1104-08"
+      {:product-type :beverage/still-flavored
+       :jurisdiction :us/fda
+       :co2-volumes 0.0
+       :brix-percent 9.0
+       :preservative-ppm 60
+       :microbial-load-cfu-per-ml 25
+       :mineral-content-mg-per-l 0
+       :fill-volume-ml 500
+       :fill-volume-variance-ml 5
+       :contamination-detected? false
+       :sanitation-score 86
+       :filling-line-last-calibration-date (days-ago 5)
+       :declared-additives #{:preservatives}
+       :evidence-checklist full-evidence-checklist
+       :safety-concern-raised? false}}
+     :facts []}))
+
+(defn all-batches
+  "All registered batches as a deterministically ordered seq of
+  `[batch-id batch-map]` pairs (sorted by id), for drivers and renderers
+  that must not depend on hash-map iteration order."
+  [st]
+  (sort-by key (get st :batches {})))
+
 (defn production-batch
   "Retrieve a batch by id, or nil if it does not exist / is not yet
   registered."
