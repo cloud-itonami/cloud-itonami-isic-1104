@@ -55,16 +55,24 @@
   [actual-mg-per-l min-mg-per-l]
   (< actual-mg-per-l min-mg-per-l))
 
+(def calibration-window-days
+  "How long a fill-volume metering calibration stays current, in days.
+  Named rather than left as a literal inside
+  `filling-line-calibration-overdue?` so that a caller reporting on the
+  rule (e.g. the build-time operator console) can state the window it is
+  actually checked against instead of re-typing the number."
+  90)
+
 (defn filling-line-calibration-overdue?
   "Independently verify that the mixing/carbonation/filling-line
-  fill-volume metering equipment was calibrated within the last 90 days.
-  `last-calibration-epoch-ms` and `now-epoch-ms` are both epoch
-  milliseconds -- callers obtain `now` via a `:clj`/`:cljs`
-  reader-conditional, keeping this namespace free of any host-clock
-  call."
+  fill-volume metering equipment was calibrated within the last
+  `calibration-window-days` days. `last-calibration-epoch-ms` and
+  `now-epoch-ms` are both epoch milliseconds -- callers obtain `now` via a
+  `:clj`/`:cljs` reader-conditional, keeping this namespace free of any
+  host-clock call."
   [last-calibration-epoch-ms now-epoch-ms]
   (> (- now-epoch-ms last-calibration-epoch-ms)
-     (* 90 24 60 60 1000)))
+     (* calibration-window-days 24 60 60 1000)))
 
 (defn fill-volume-variance-excessive?
   "Independently verify that a batch's finished-product fill-volume

@@ -88,6 +88,19 @@
 
 (def confidence-floor 0.6)
 
+(def fill-volume-variance-max-ml
+  "Maximum finished-product fill-volume drift from the standard-of-fill
+  target, in mL, before `fill-volume-variance-excessive-violations` holds.
+  Named rather than left as a literal at its call site so a caller
+  reporting on the rule states the limit it is actually checked against."
+  15)
+
+(def sanitation-score-min
+  "Minimum plant clean-in-place (CIP) hygiene score (0-100) before
+  `sanitation-score-insufficient-violations` holds. Named for the same
+  reason as `fill-volume-variance-max-ml`."
+  75)
+
 (def high-stakes
   "Stakes grave enough to always require a human, even when clean.
   Logging a batch into production records (`:log-production-batch`) and
@@ -311,10 +324,12 @@
   (when (= op :log-production-batch)
     (let [b (store/production-batch st subject)]
       (when (and b (:fill-volume-variance-ml b)
-                 (registry/fill-volume-variance-excessive? (:fill-volume-variance-ml b) 15))
+                 (registry/fill-volume-variance-excessive? (:fill-volume-variance-ml b)
+                                                           fill-volume-variance-max-ml))
         [{:rule :fill-volume-variance-excessive
           :detail (str subject " の充填量分散(" (:fill-volume-variance-ml b)
-                      "mL)が許容範囲(15mL)を超過 -- バッチ登録提案は進められない")}]))))
+                      "mL)が許容範囲(" fill-volume-variance-max-ml
+                      "mL)を超過 -- バッチ登録提案は進められない")}]))))
 
 (defn- additive-label-mismatch-violations
   "For `:log-production-batch`, INDEPENDENTLY verify preservative/additive
@@ -337,10 +352,12 @@
   (when (= op :log-production-batch)
     (let [b (store/production-batch st subject)]
       (when (and b (:sanitation-score b)
-                 (registry/sanitation-score-insufficient? (:sanitation-score b) 75))
+                 (registry/sanitation-score-insufficient? (:sanitation-score b)
+                                                          sanitation-score-min))
         [{:rule :sanitation-score-insufficient
           :detail (str subject " の工場衛生スコア(" (:sanitation-score b)
-                      ")が最低要件(75)を下回る -- バッチ登録提案は進められない")}]))))
+                      ")が最低要件(" sanitation-score-min
+                      ")を下回る -- バッチ登録提案は進められない")}]))))
 
 (defn- food-safety-flag-unresolved-violations
   "An unresolved food-safety flag is a HARD, un-overridable hold.
