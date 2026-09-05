@@ -1,248 +1,238 @@
 (ns softdrinkops.render-html
   "Build-time HTML renderer for `docs/samples/operator-console.html`.
 
-  Drives the REAL actor stack of this repo -- `softdrinkops.store` (seed +
-  append-only ledger) -> `softdrinkops.operation/run-operation` ->
-  `softdrinkops.governor/check` + `softdrinkops.governor/hold-fact` -- over a
-  fixed scenario, then renders whatever that run actually produced. There is
-  no mock governor, no hand-written verdict and no hand-typed hold text: every
-  rule name and every Japanese detail string on the page comes out of
-  `softdrinkops.governor`'s own violation maps, and every batch number comes
-  out of `softdrinkops.store/seed-db`.
+  Closes flagship checklist item 2 for this repo: it previously had NO demo
+  page and no generator at all. This namespace drives the REAL actor stack
+  (`softdrinkops.operation/run-operation` -> `softdrinkops.governor/check`
+  over a `softdrinkops.store` value) and renders whatever comes back.
 
-  Three things about THIS repo shape the renderer, and are worth stating so
-  the page is not read as claiming more than it does:
+  WHY THE SCENARIO IS AUTHORED HERE RATHER THAN TAKEN FROM `sim`. This
+  repo's own driver `softdrinkops.sim` is still a stub -- `clojure -M:dev:run`
+  prints \"not yet implemented\" and exercises nothing -- so there was no
+  existing scenario to reuse. The seed batches were therefore authored, and
+  they live in `softdrinkops.store/demo-batches` (NOT in this namespace) so
+  that every subject id fed to the actor is a batch that literally exists
+  in the store and is greppable from one place.
 
-  1. This repo has no langgraph StateGraph. `softdrinkops.advisor` is still a
-     skeleton and `softdrinkops.sim` prints \"not yet implemented\". The real
-     driver surface available today is `operation/run-operation`, which is
-     exactly what this namespace calls -- the same call shape the repo's own
-     `test/softdrinkops/operation_test.cljc` uses.
-  2. `operation/run-operation` returns `{:ok? true :facts []}` on a clean
-     verdict. It emits NO commit fact. The audit ledger can therefore only
-     ever contain `:governor-hold` facts, and the status column below has no
-     `:committed` / `:approval-granted` branch -- such a branch would be
-     unreachable. The page says so rather than implying a richer ledger.
-  3. Human sign-off is not modelled by this repo either. Where the scenario
-     needs a signed-off commit (to reach the double-commit guards), it calls
-     `store/log-batch` / `store/finalize-shipment` -- the store functions whose
-     own docstrings say they are \"used once a proposal commits\" -- and the
-     page labels those two rows as operator actions taken OUTSIDE the actor,
-     not as actor output.
+  WHAT IS REAL AND WHAT IS SCRIPTED, precisely:
 
-  Determinism: nothing time-varying reaches the page. Calibration dates exist
-  in the seed (the Governor measures them against the current clock) but are
-  never rendered, so two consecutive runs are byte-identical.
+    * Every verdict on the page is the Governor's, computed at run time.
+      This namespace never re-implements a rule, never hard-codes a rule
+      name against a batch, and never decides `ok?`/`hard?`/`escalate?`
+      itself -- it calls `operation/run-operation` and reads the returned
+      `:verdict` and `:facts`.
+    * Every audit fact on the page has a domain-layer shape:
+      `governor/hold-fact` for refusals, `operation/commit-fact` and
+      `operation/approval-fact` for the other two dispositions.
+    * The parameter table's pass/fail colouring calls the same
+      `softdrinkops.registry` / `softdrinkops.facts` predicates the
+      Governor calls; the limits beside each measured value are read from
+      `facts/product-types`, `governor/fill-volume-variance-max-ml`,
+      `governor/sanitation-score-min` and
+      `registry/calibration-window-days`. No threshold is typed in here.
+    * The human sign-off IS scripted -- this repo has no approval
+      machinery (no langgraph state graph, no resume). The Governor decides
+      that a human is required (`:escalate?`); `run-step` then applies the
+      demo operator's approval and the resulting store transition. An
+      approval is structurally impossible on a hard hold: `run-step` only
+      consults `:approve-with` when the real verdict says `(not :hard?)`.
+    * The `action-gate-rows` table is a static description of this actor's
+      own fixed op contract (documentation of code, not telemetry) and is
+      the only hand-written content on the page.
+
+  DETERMINISM. No timestamp, no random value and no wall-clock reading
+  reaches the page. The single clock read (`System/currentTimeMillis`) is
+  passed to `store/seed-db`, which expresses calibration dates as offsets
+  from it, so both the Governor's 90-day verdicts and the rendered \"N days
+  since calibration\" figures are the same constants on every run. Two
+  consecutive runs are byte-identical; verify by diffing them.
 
   Usage: `clojure -M:dev:render-html [out-file]`
   (default `docs/samples/operator-console.html`)."
-  (:require [clojure.string :as str]
+  (:require [jp-go-dds.skin]
+            [clojure.string :as str]
+            [softdrinkops.store :as store]
             [softdrinkops.facts :as facts]
+            [softdrinkops.registry :as registry]
             [softdrinkops.governor :as governor]
-            [softdrinkops.operation :as operation]
-            [softdrinkops.store :as store]))
+            [softdrinkops.operation :as operation]))
 
-;; ───────────────────────────── driving the real actor ─────────────────────────
-
-(def ^:private operator-context
+(def ^:private actor-context
   "The `context` map `operation/run-operation` expects: an actor id and the
-  hold-fact constructor it calls when the Governor refuses. Passing
-  `governor/hold-fact` here is what makes every hold row on the page real
-  Governor output."
-  {:actor-id "op-1"
-   :actor-role :plant-operations-coordinator
-   :hold-fact-fn governor/hold-fact})
+  Governor's own hold-fact constructor. Passing `governor/hold-fact` here
+  is what keeps the refusal facts on the page the Governor's own output."
+  {:actor-id "softdrinkops-1" :hold-fact-fn governor/hold-fact})
 
-(defn- propose!
-  "Drive ONE proposal through the real OperationActor and append whatever
-  facts it emits to the store's own append-only ledger via
-  `store/append-fact`. Returns `[store' step]`."
-  [st label request proposal]
-  (let [result (operation/run-operation request operator-context proposal st governor/check)
-        st' (reduce store/append-fact st (:facts result))]
-    [st' {:kind :proposal
-          :label label
-          :request request
-          :proposal proposal
-          :result result}]))
+(def ^:private operator-id "op-1")
 
-(defn- commit-batch-log
-  "Apply a signed-off `:log-production-batch` to the plant record. `log-batch`
-  takes the batch data because it is also the registration entry point; here
-  the batch already exists, so its own current record is passed straight
-  back -- `log-batch` adds the one-way `:processed?` flag."
-  [st batch-id]
-  (store/log-batch st batch-id (store/production-batch st batch-id)))
+(defn- cites-for
+  "A citation naming the jurisdiction the proposal is made under, taken
+  from `facts/jurisdictions` rather than typed out here. The Governor only
+  checks that a citation is PRESENT (`no-spec-basis`); it does not verify
+  the text."
+  [jurisdiction-id]
+  [{:spec (:name (facts/jurisdiction-by-id jurisdiction-id))}])
 
-(defn- sign-off!
-  "Record a human operator sign-off. This is NOT actor output -- the Governor
-  escalated, a person said yes, and the plant record moved. `apply-fn` is the
-  `softdrinkops.store` state change that sign-off authorises."
-  [st label batch-id applied apply-fn]
-  [(apply-fn st batch-id)
-   {:kind :sign-off :label label :subject batch-id :applied applied}])
+(defn- proposal-for
+  "A well-formed advisor proposal for `batch-id`, at `confidence`."
+  [db batch-id confidence]
+  (let [j (:jurisdiction (store/production-batch db batch-id))]
+    {:cites (cites-for j)
+     :value {:jurisdiction j}
+     :effect :propose
+     :confidence confidence}))
 
-(defn- cites
-  "A citation vector in the shape `governor/spec-basis-violations` checks for."
-  [spec]
-  [{:spec spec}])
+(defn- run-step
+  "Drive ONE proposal through the real actor and fold the result into `db`.
+
+  Appends the Governor's own facts verbatim, then records the disposition:
+    * `:ok?`   -> an `operation/commit-fact` (the Governor cleared it)
+    * hard     -> nothing further; the Governor's `:governor-hold` fact
+                  already carries `:basis` (the rule names) and
+                  `:violations` (the rule details)
+    * escalate -> if, and only if, the caller supplied `:approve-with`
+                  (the store transition the sign-off authorises), the demo
+                  operator approves: the transition is applied and an
+                  `operation/approval-fact` is appended. With no
+                  `:approve-with` the Governor's soft-gate hold stands as
+                  the terminal record and the proposal is left sitting in
+                  the operator's queue -- which is what an open food-safety
+                  concern should look like.
+
+  `:approve-with` is only ever consulted when the REAL verdict says the
+  hold is not hard, so no scripted approval can bypass a hard rule."
+  [db request proposal & {:keys [approve-with]}]
+  (let [{:keys [ok? facts verdict]}
+        (operation/run-operation request actor-context proposal db governor/check)
+
+        db' (reduce store/append-fact db facts)]
+    (cond
+      ok?
+      (store/append-fact db' (operation/commit-fact request actor-context proposal))
+
+      (:hard? verdict) db'
+
+      approve-with
+      (-> (approve-with db')
+          (store/append-fact (operation/approval-fact request operator-id verdict)))
+
+      ;; escalated and NOT approved -- stays in the operator's queue
+      :else db')))
+
+(defn- log-batch-with
+  "Store transition for an approved `:log-production-batch`: promote the
+  already-registered batch to processed, preserving its measured fields."
+  [batch-id]
+  (fn [db] (store/log-batch db batch-id (store/production-batch db batch-id))))
 
 (defn run-demo!
-  "Runs the seeded plant records through a scenario that reaches every
-  disposition this actor can produce, and 16 of the Governor's 17 hard rules.
+  "Run a scenario over a freshly seeded store and return the resulting
+  store. Every subject named below is a key of `store/demo-batches`.
 
-  The one hard rule deliberately NOT exercised is `:batch-not-registered`:
-  reaching it requires driving a subject id that is absent from the seed, and
-  this console only ever drives batch ids that `store/seed-db` actually
-  registered. The rule is listed in the gate table below so the omission is
-  visible rather than silent.
+  Per-batch intent -- SETUP only; every disposition is the Governor's:
 
-  Returns `{:store st :steps [...]}` where `st` is the store as the run left
-  it (ledger included) and `steps` is the ordered transcript."
-  []
-  (let [seed (store/seed-db (System/currentTimeMillis))
-        b1 "batch-1104-01"
-        b8 "batch-1104-08"]
-    (loop [st seed
-           steps []
-           todo
-           [;; A. the only auto-commit path this actor has: a clean, routine
-            ;; maintenance proposal, well above the confidence floor.
-            [:propose "clean maintenance proposal"
-             {:op :schedule-maintenance :subject b8}
-             {:cites (cites "Filling-Line-Maintenance-Manual")
-              :value {:jurisdiction :us/fda}
-              :effect :propose
-              :confidence 0.92}]
+    batch-jp-2401  clean carbonated soft drink. Full clean lifecycle:
+                   maintenance auto-commits, batch logging and shipment
+                   each escalate and are approved, then both double-commit
+                   guards fire on the repeat attempts.
+    batch-us-2402  clean natural mineral water: logged with sign-off, not
+                   yet shipped. Also used for the authority boundary --
+                   `:actuate-filling-line` is not this actor's to propose.
+    batch-us-2403  plate count over the bottled-water ceiling.
+    batch-eu-2404  carbonation over the product's tolerance band.
+    batch-jp-2405  TDS under the \"mineral water\" label floor.
+    batch-us-2406  contamination screen positive AND an unresolved
+                   food-safety flag; also raises the concern once with no
+                   citation, and once properly (left unapproved on purpose,
+                   so the page ends with an item still in the queue).
+    batch-eu-2407  evidence checklist short of the jurisdiction's list.
+    batch-jp-2408  fill-volume metering calibration overdue; also used for
+                   the `:effect :propose` invariant.
+    batch-us-2409  preservative under the ceiling but undeclared.
+    batch-eu-2410  CIP hygiene score under the floor; also used for the
+                   low-confidence soft gate.
+    batch-jp-2411  Brix outside the declared style's window.
+    batch-us-2412  preservative residue over the product ceiling.
+    batch-eu-2413  standard-of-fill drift over tolerance."
+  [now]
+  (let [db (store/seed-db now)
+        ;; A proposal at the given confidence for a batch, resolved against
+        ;; the CURRENT db so the jurisdiction citation is the batch's own.
+        p (fn [db* id conf] (proposal-for db* id conf))]
+    (as-> db $
+      ;; ---- batch-jp-2401: clean carbonated soft drink, full lifecycle ----
+      ;; maintenance scheduling is neither high-stakes nor food-safety, so a
+      ;; clean, confident proposal commits with no human in the loop.
+      (run-step $ {:op :schedule-maintenance :subject "batch-jp-2401"}
+                (p $ "batch-jp-2401" 0.91))
+      ;; logging a batch is one of the two real actuation events -> always human
+      (run-step $ {:op :log-production-batch :subject "batch-jp-2401"}
+                (p $ "batch-jp-2401" 0.93)
+                :approve-with (log-batch-with "batch-jp-2401"))
+      ;; shipping finished product is the other -> always human
+      (run-step $ {:op :coordinate-shipment :subject "batch-jp-2401"}
+                (p $ "batch-jp-2401" 0.90)
+                :approve-with #(store/finalize-shipment % "batch-jp-2401"))
+      ;; double-commit guards, now that the flags are actually set
+      (run-step $ {:op :log-production-batch :subject "batch-jp-2401"}
+                (p $ "batch-jp-2401" 0.93))
+      (run-step $ {:op :coordinate-shipment :subject "batch-jp-2401"}
+                (p $ "batch-jp-2401" 0.90))
 
-            ;; ... and the same proposal below the confidence floor.
-            [:propose "same proposal, low advisor confidence"
-             {:op :schedule-maintenance :subject b8}
-             {:cites (cites "Filling-Line-Maintenance-Manual")
-              :value {:jurisdiction :us/fda}
-              :effect :propose
-              :confidence 0.41}]
+      ;; ---- batch-us-2402: clean mineral water, logged, not yet shipped ----
+      (run-step $ {:op :log-production-batch :subject "batch-us-2402"}
+                (p $ "batch-us-2402" 0.88)
+                :approve-with (log-batch-with "batch-us-2402"))
+      ;; authority boundary: driving the filling line is not a proposal this
+      ;; actor may make at all, at any confidence.
+      (run-step $ {:op :actuate-filling-line :subject "batch-us-2402"}
+                (p $ "batch-us-2402" 0.99))
 
-            ;; B. proposals that fail on their own shape, before any
-            ;; production parameter is looked at.
-            [:propose "batch log with no jurisdiction citation"
-             {:op :log-production-batch :subject b8}
-             {:cites []
-              :value {:jurisdiction :us/fda}
-              :effect :propose
-              :confidence 0.88}]
+      ;; ---- one hard batch-parameter rule per batch ----
+      (run-step $ {:op :log-production-batch :subject "batch-us-2403"}
+                (p $ "batch-us-2403" 0.92))
+      (run-step $ {:op :log-production-batch :subject "batch-eu-2404"}
+                (p $ "batch-eu-2404" 0.92))
+      (run-step $ {:op :log-production-batch :subject "batch-jp-2405"}
+                (p $ "batch-jp-2405" 0.92))
 
-            [:propose "direct filling-line actuation (outside the allowlist)"
-             {:op :actuate-filling-line :subject b1}
-             {:cites (cites "Filling-Line-Manual")
-              :value {:jurisdiction :jp/mhlw}
-              :effect :propose
-              :confidence 0.99}]
+      ;; ---- batch-us-2406: contamination + an open food-safety flag ----
+      (run-step $ {:op :log-production-batch :subject "batch-us-2406"}
+                (p $ "batch-us-2406" 0.92))
+      ;; a food-safety concern raised with no citation at all
+      (run-step $ {:op :flag-food-safety-concern :subject "batch-us-2406"}
+                (assoc (p $ "batch-us-2406" 0.95) :cites []))
+      ;; ... and the same concern raised properly: never auto-resolved by
+      ;; confidence, so it waits for a human. Left UNAPPROVED on purpose --
+      ;; an open food-safety concern is exactly what should still be sitting
+      ;; in an operator's queue at the bottom of this page.
+      (run-step $ {:op :flag-food-safety-concern :subject "batch-us-2406"}
+                (p $ "batch-us-2406" 0.95))
 
-            [:propose "plant food-safety certification (outside the allowlist)"
-             {:op :certify-food-safety :subject b1}
-             {:cites (cites "HACCP-Plan")
-              :value {:jurisdiction :jp/mhlw}
-              :effect :propose
-              :confidence 0.99}]
+      (run-step $ {:op :log-production-batch :subject "batch-eu-2407"}
+                (p $ "batch-eu-2407" 0.92))
+      (run-step $ {:op :log-production-batch :subject "batch-jp-2408"}
+                (p $ "batch-jp-2408" 0.92))
+      ;; the effect invariant: the actor proposes, it never claims a commit
+      (run-step $ {:op :schedule-maintenance :subject "batch-jp-2408"}
+                (assoc (p $ "batch-jp-2408" 0.97) :effect :commit))
 
-            [:propose "maintenance proposal claiming direct write authority"
-             {:op :schedule-maintenance :subject b1}
-             {:cites (cites "Filling-Line-Maintenance-Manual")
-              :value {:jurisdiction :jp/mhlw}
-              :effect :commit
-              :confidence 0.93}]
+      (run-step $ {:op :log-production-batch :subject "batch-us-2409"}
+                (p $ "batch-us-2409" 0.92))
+      (run-step $ {:op :log-production-batch :subject "batch-eu-2410"}
+                (p $ "batch-eu-2410" 0.92))
+      ;; low confidence on an otherwise unremarkable op -> soft gate
+      (run-step $ {:op :schedule-maintenance :subject "batch-eu-2410"}
+                (p $ "batch-eu-2410" 0.42))
 
-            ;; C. a full, clean actuation arc on batch-1104-01, including both
-            ;; double-commit guards.
-            [:propose "log a clean batch (actuation)"
-             {:op :log-production-batch :subject b1}
-             {:cites (cites "食品衛生法 清涼飲料水の規格基準")
-              :value {:jurisdiction :jp/mhlw}
-              :effect :propose
-              :confidence 0.94}]
-            [:sign-off "operator signs off the batch log" b1
-             "store/log-batch" commit-batch-log]
-            [:propose "the same batch log, proposed again"
-             {:op :log-production-batch :subject b1}
-             {:cites (cites "食品衛生法 清涼飲料水の規格基準")
-              :value {:jurisdiction :jp/mhlw}
-              :effect :propose
-              :confidence 0.94}]
+      (run-step $ {:op :log-production-batch :subject "batch-jp-2411"}
+                (p $ "batch-jp-2411" 0.92))
+      (run-step $ {:op :log-production-batch :subject "batch-us-2412"}
+                (p $ "batch-us-2412" 0.92))
+      (run-step $ {:op :log-production-batch :subject "batch-eu-2413"}
+                (p $ "batch-eu-2413" 0.92)))))
 
-            [:propose "coordinate the outbound shipment (actuation)"
-             {:op :coordinate-shipment :subject b1}
-             {:cites (cites "食品衛生法 清涼飲料水の規格基準")
-              :value {:jurisdiction :jp/mhlw}
-              :effect :propose
-              :confidence 0.90}]
-            [:sign-off "operator signs off the shipment" b1
-             "store/finalize-shipment" store/finalize-shipment]
-            [:propose "the same shipment, coordinated again"
-             {:op :coordinate-shipment :subject b1}
-             {:cites (cites "食品衛生法 清涼飲料水の規格基準")
-              :value {:jurisdiction :jp/mhlw}
-              :effect :propose
-              :confidence 0.90}]
-
-            ;; D. hard holds the Governor derives from the batches' own
-            ;; production parameters.
-            [:propose "log a mineral water under the TDS floor"
-             {:op :log-production-batch :subject "batch-1104-02"}
-             {:cites (cites "Directive 2009/54/EC")
-              :value {:jurisdiction :eu/dg-sante}
-              :effect :propose
-              :confidence 0.91}]
-
-            [:propose "log a bottled water over the microbial action level"
-             {:op :log-production-batch :subject "batch-1104-03"}
-             {:cites (cites "21 CFR 165.110")
-              :value {:jurisdiction :us/fda}
-              :effect :propose
-              :confidence 0.89}]
-
-            [:propose "raise the food-safety concern on that water"
-             {:op :flag-food-safety-concern :subject "batch-1104-03"}
-             {:cites (cites "21 CFR 165.110")
-              :value {:jurisdiction :us/fda}
-              :effect :propose
-              :confidence 0.97}]
-
-            [:propose "log a soft drink off both carbonation and Brix"
-             {:op :log-production-batch :subject "batch-1104-04"}
-             {:cites (cites "21 CFR 165.110")
-              :value {:jurisdiction :us/fda}
-              :effect :propose
-              :confidence 0.86}]
-
-            [:propose "log a still drink with thin evidence and an undeclared preservative"
-             {:op :log-production-batch :subject "batch-1104-05"}
-             {:cites (cites "食品衛生法 清涼飲料水の規格基準")
-              :value {:jurisdiction :jp/mhlw}
-              :effect :propose
-              :confidence 0.83}]
-
-            [:propose "log a batch with detected contamination"
-             {:op :log-production-batch :subject "batch-1104-06"}
-             {:cites (cites "21 CFR 110")
-              :value {:jurisdiction :us/fda}
-              :effect :propose
-              :confidence 0.90}]
-
-            [:propose "log a mineral water carrying added preservative"
-             {:op :log-production-batch :subject "batch-1104-07"}
-             {:cites (cites "食品衛生法 清涼飲料水の規格基準")
-              :value {:jurisdiction :jp/mhlw}
-              :effect :propose
-              :confidence 0.92}]]]
-      (if-let [[kind & args] (first todo)]
-        (let [[st' step] (if (= kind :propose)
-                           (apply propose! st args)
-                           (apply sign-off! st args))]
-          (recur st' (conj steps step) (rest todo)))
-        {:store st :steps steps}))))
-
-;; ───────────────────────────────── rendering ──────────────────────────────────
+;; ----------------------------- rendering -----------------------------
 
 (defn- esc [v]
   (-> (str v)
@@ -250,180 +240,202 @@
       (str/replace "<" "&lt;")
       (str/replace ">" "&gt;")))
 
-(defn- kw-list [ks]
-  (if (seq ks) (str/join ", " (map name ks)) "—"))
+(defn- hard-hold?
+  "A `:governor-hold` fact carries `:basis` only for hard violations:
+  `governor/check` returns `:violations` for hard rules alone, and
+  `:escalate?` is defined as `(and (not hard?) ...)`. So a hold with an
+  empty basis is precisely the soft gate, not a rule breach."
+  [fact]
+  (and (= :governor-hold (:t fact)) (seq (:basis fact))))
 
-(defn- disposition
-  "The disposition the real Governor reached for one step. `run-operation`
-  omits `:verdict` entirely when the verdict was clean, so `:ok?` is checked
-  first."
-  [{:keys [result]}]
-  (let [v (:verdict result)]
-    (cond
-      (:ok? result) :commit
-      (:hard? v) :hard-hold
-      :else :escalate)))
+(defn- rules-of [fact] (map name (:basis fact)))
 
-(def ^:private disposition-cell
-  {:commit "<span class=\"ok\">COMMIT — Governor clean, no sign-off required</span>"
-   :escalate "<span class=\"warn\">ESCALATE — human sign-off required</span>"
-   :hard-hold "<span class=\"critical\">HARD HOLD — un-overridable</span>"})
+(defn- disposition-cell [fact]
+  (cond
+    (nil? fact) "<span class=\"muted\">no activity</span>"
+    (= :committed (:t fact)) "<span class=\"ok\">auto-committed</span>"
+    (= :operator-approval (:t fact)) "<span class=\"ok\">approved &amp; committed</span>"
+    (hard-hold? fact) (str "<span class=\"critical\">HARD hold &middot; "
+                           (esc (str/join ", " (rules-of fact))) "</span>")
+    (= :governor-hold (:t fact)) "<span class=\"warn\">escalated &middot; awaiting operator</span>"
+    :else "<span class=\"muted\">in progress</span>"))
 
-(defn- step-row [step]
-  (if (= :sign-off (:kind step))
-    (format (str "        <tr class=\"human\"><td>%s</td><td>—</td><td>%s</td>"
-                 "<td colspan=\"2\"><span class=\"human-tag\">operator action, outside the actor</span>"
-                 " plant record moved by <code>%s</code></td></tr>")
-            (esc (:label step)) (esc (:subject step)) (esc (:applied step)))
-    (let [{:keys [label request result]} step
-          d (disposition step)
-          rules (->> result :verdict :violations (map :rule))]
-      (format "        <tr><td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td></tr>"
-              (esc label)
-              (esc (name (:op request)))
-              (esc (:subject request))
-              (disposition-cell d)
-              (if (seq rules)
-                (str "<code>" (esc (kw-list rules)) "</code>")
-                (if (= :escalate d)
-                  "<span class=\"muted\">no rule violated — escalation is the gate itself</span>"
-                  "<span class=\"muted\">—</span>"))))))
+(defn- lifecycle-cell [{:keys [processed? shipment-finalized?]}]
+  (cond
+    shipment-finalized? "<span class=\"ok\">logged &amp; shipment finalized</span>"
+    processed? "<span class=\"warn\">logged, shipment not finalized</span>"
+    :else "<span class=\"muted\">not logged</span>"))
 
 (defn- last-fact-for [ledger batch-id]
   (last (filter #(= (:subject %) batch-id) ledger)))
 
-(defn- status-cell
-  "`:governor-hold` is the ONLY fact type this actor ever appends —
-  `operation/run-operation` returns `:facts []` on a clean verdict — so there
-  is deliberately no `:committed` / `:approval-granted` branch here. A hold
-  with a non-empty `:basis` is a hard rule firing; a hold with an empty
-  `:basis` is the escalation gate."
-  [ledger batch-id]
-  (let [f (last-fact-for ledger batch-id)]
-    (cond
-      (nil? f) "<span class=\"muted\">no proposal in this run</span>"
-      (seq (:basis f)) (str "<span class=\"critical\">HARD hold · "
-                            (esc (kw-list (:basis f))) "</span>")
-      :else "<span class=\"warn\">escalated to operator</span>")))
-
-(defn- plant-state-cell [{:keys [processed? shipment-finalized?]}]
-  (cond
-    shipment-finalized? "<span class=\"ok\">logged &amp; shipment finalized</span>"
-    processed? "<span class=\"ok\">logged, shipment open</span>"
-    :else "<span class=\"muted\">not yet logged</span>"))
-
 (defn- batch-row [ledger [id b]]
+  (format "        <tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
+          (esc id)
+          (esc (:name (facts/product-type-by-id (:product-type b))))
+          (esc (:name (facts/jurisdiction-by-id (:jurisdiction b))))
+          (lifecycle-cell b)
+          (disposition-cell (last-fact-for ledger id))))
+
+(def ^:private day-ms (* 24 60 60 1000))
+
+(defn- ok-warn
+  "Wrap `actual` in the state class `bad?` implies. `bad?` is always the
+  Governor's OWN predicate (`softdrinkops.registry` / `softdrinkops.facts`)
+  applied to the same two arguments the Governor passes it, called here
+  only for COLOURING a cell -- the hold/commit decision on this page comes
+  from the Governor's verdict, never from this function."
+  [bad? actual]
+  (format "<span class=\"%s\">%s</span>" (if bad? "critical" "ok") (esc actual)))
+
+(defn- measured
+  "One `actual / limit` cell: the value read off the batch, coloured by the
+  Governor's own predicate, beside the limit it was checked against."
+  [bad? actual limit-label]
+  (format "%s <span class=\"muted\">/ %s</span>"
+          (ok-warn bad? actual) (esc limit-label)))
+
+(defn- param-row
+  "One batch's measured parameters beside the limit each is checked
+  against. Actuals are read off the batch record; per-product limits come
+  from `facts/product-types`; the three cross-product limits come from
+  `governor/fill-volume-variance-max-ml`, `governor/sanitation-score-min`
+  and `registry/calibration-window-days`. Every pass/fail call below is the
+  Governor's own predicate, not a comparison written here."
+  [now [id b]]
   (let [p (facts/product-type-by-id (:product-type b))
-        j (facts/jurisdiction-by-id (:jurisdiction b))]
-    (format (str "        <tr><td><code>%s</code></td><td>%s</td><td>%s</td>"
-                 "<td class=\"num\">%s</td><td class=\"num\">%s</td><td class=\"num\">%s</td>"
-                 "<td class=\"num\">%s</td><td class=\"num\">%s</td><td class=\"num\">%s</td>"
+        cal-days (quot (- now (:filling-line-last-calibration-date b)) day-ms)
+        j (facts/jurisdiction-by-id (:jurisdiction b))
+        evidence-n (count (:evidence-checklist b))
+        required-n (count (:required-evidence j))]
+    ;; 12 cells, matching the 12 column headers in `render` -- `format`
+    ;; silently DROPS surplus arguments, so a short format string here
+    ;; would lose a column without erroring.
+    (format (str "        <tr><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td>"
+                 "<td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>"
                  "<td>%s</td><td>%s</td></tr>")
             (esc id)
-            (esc (:name p))
-            (esc (:name j))
-            (esc (:co2-volumes b))
-            (esc (:brix-percent b))
-            (esc (:preservative-ppm b))
-            (esc (:microbial-load-cfu-per-ml b))
-            (esc (:mineral-content-mg-per-l b))
-            (esc (:fill-volume-variance-ml b))
-            (esc (:sanitation-score b))
-            (str (plant-state-cell b) "<br>" (status-cell ledger id)))))
+            ;; CO2 volumes vs the product's target ± tolerance
+            (measured (registry/carbonation-out-of-tolerance?
+                       (:co2-volumes b) (:co2-volumes-target p) (:co2-volumes-tolerance p))
+                      (:co2-volumes b)
+                      (str (:co2-volumes-target p) "±" (:co2-volumes-tolerance p)))
+            ;; Brix vs the declared style's window
+            (measured (registry/brix-out-of-range?
+                       (:brix-percent b) (:brix-min-percent p) (:brix-max-percent p))
+                      (:brix-percent b)
+                      (str (:brix-min-percent p) "–" (:brix-max-percent p)))
+            ;; preservative residue vs the product ceiling
+            (measured (registry/preservative-exceeds-max?
+                       (:preservative-ppm b) (:preservative-max-ppm p))
+                      (:preservative-ppm b)
+                      (str "≤" (:preservative-max-ppm p)))
+            ;; declared additives, coloured by the label-mismatch rule
+            ;; (sorted -- :declared-additives is a set)
+            (ok-warn (registry/additive-label-mismatch?
+                      (:preservative-ppm b)
+                      (:preservative-declaration-threshold-ppm j)
+                      (:declared-additives b))
+                     (if (seq (:declared-additives b))
+                       (str/join ", " (sort (map name (:declared-additives b))))
+                       "none declared"))
+            ;; plate count vs the product ceiling
+            (measured (registry/microbial-load-exceeds-max?
+                       (:microbial-load-cfu-per-ml b) (:microbial-load-max-cfu-per-ml p))
+                      (:microbial-load-cfu-per-ml b)
+                      (str "≤" (:microbial-load-max-cfu-per-ml p)))
+            ;; TDS vs the mineral-water label floor
+            (measured (registry/mineral-content-below-minimum?
+                       (:mineral-content-mg-per-l b) (:mineral-content-min-mg-per-l p))
+                      (:mineral-content-mg-per-l b)
+                      (str "≥" (:mineral-content-min-mg-per-l p)))
+            ;; standard-of-fill drift vs the Governor's tolerance
+            (measured (registry/fill-volume-variance-excessive?
+                       (:fill-volume-variance-ml b) governor/fill-volume-variance-max-ml)
+                      (:fill-volume-variance-ml b)
+                      (str "≤" governor/fill-volume-variance-max-ml))
+            ;; CIP hygiene vs the Governor's floor
+            (measured (registry/sanitation-score-insufficient?
+                       (:sanitation-score b) governor/sanitation-score-min)
+                      (:sanitation-score b)
+                      (str "≥" governor/sanitation-score-min))
+            ;; days since calibration vs the registry's window
+            (measured (registry/filling-line-calibration-overdue?
+                       (:filling-line-last-calibration-date b) now)
+                      (str cal-days "d")
+                      (str "≤" registry/calibration-window-days "d"))
+            ;; evidence items present vs the jurisdiction's required list
+            (ok-warn (not (facts/required-evidence-satisfied?
+                           (:jurisdiction b) (:evidence-checklist b)))
+                     (format "%s/%s" evidence-n required-n))
+            ;; contamination screen, and any open food-safety flag
+            (str (ok-warn (registry/contamination-detected? (:contamination-detected? b))
+                          (if (:contamination-detected? b) "contamination" "clean"))
+                 (when (and (:safety-concern-raised? b)
+                            (not (:safety-concern-resolved? b)))
+                   " <span class=\"critical\">· flag open</span>")))))
 
-(defn- gate-row
-  "One row of the action gate, derived from the Governor's own vars rather
-  than from prose: `governor/allowed-ops`, `governor/high-stakes`,
-  `governor/always-escalate-ops` and `governor/confidence-floor`."
-  [op]
-  (format "        <tr><td><code>%s</code></td><td>%s</td></tr>"
-          (esc (name op))
-          (cond
-            (contains? governor/high-stakes op)
-            "<span class=\"warn\">ALWAYS human sign-off — real actuation event</span>"
-            (contains? governor/always-escalate-ops op)
-            "<span class=\"warn\">ALWAYS human sign-off — never auto-resolved by confidence</span>"
-            :else
-            (str "<span class=\"ok\">auto-commit when the Governor is clean and confidence &ge; "
-                 (esc governor/confidence-floor) "</span>"))))
-
-(defn- hold-detail-item
-  "One HARD-hold entry. Both the rule name and the explanatory sentence are
-  read straight out of the Governor's violation map — nothing here is written
-  by hand."
-  [{:keys [op subject violations]}]
-  (str "      <li><code>" (esc (name op)) "</code> &middot; <strong>" (esc subject) "</strong>\n"
-       "        <ul>\n"
-       (str/join "\n"
-                 (for [{:keys [rule detail]} violations]
-                   (str "          <li><code>" (esc (name rule)) "</code> — " (esc detail) "</li>")))
-       "\n        </ul>\n      </li>"))
-
-(defn- ledger-row [{:keys [t op subject basis confidence] disp :disposition}]
-  (format "        <tr><td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td><td>%s</td><td class=\"num\">%s</td></tr>"
+(defn- ledger-row [{:keys [t op subject disposition high-stakes?] :as f}]
+  (format "        <tr><td>%s</td><td><code>%s</code></td><td><code>%s</code></td><td>%s</td></tr>"
           (esc (name t))
           (esc (name op))
           (esc subject)
-          (esc (name disp))
-          (if (seq basis) (str "<code>" (esc (kw-list basis)) "</code>")
-              "<span class=\"muted\">escalation gate (no rule violated)</span>")
-          (esc confidence)))
+          (cond
+            (hard-hold? f)
+            (str "<span class=\"critical\">HARD hold &middot; "
+                 (esc (str/join ", " (rules-of f))) "</span>")
+            (= :governor-hold t)
+            "<span class=\"warn\">soft gate &middot; human required</span>"
+            :else
+            (str "<span class=\"ok\">" (esc (name (or disposition :n-a))) "</span>"
+                 (when high-stakes?
+                   " <span class=\"muted\">(high-stakes actuation)</span>")))))
 
-(def ^:private css
-  (str "body{font:14px/1.6 system-ui,-apple-system,'Hiragino Sans','Noto Sans JP',sans-serif;"
-       "margin:0;color:#1a1a1c;background:#f2f4f7}"
-       ".bar{background:#0031d8;color:#fff;padding:1.1rem 2rem}"
-       ".bar h1{margin:0;font-size:1.1rem;font-weight:600}"
-       ".bar .badge{display:inline-block;margin-top:.4rem;font-size:.76rem;opacity:.9}"
-       "main{max-width:1180px;margin:1.4rem auto;padding:0 1rem}"
-       ".card{background:#fff;border-radius:8px;padding:1.1rem 1.3rem;margin-bottom:1.1rem;"
-       "box-shadow:0 1px 3px rgba(0,0,0,.09)}"
-       ".card h2{margin:0 0 .3rem;font-size:1rem}"
-       ".muted{color:#6b6b70;font-size:.82rem}"
-       "p.muted{margin:.2rem 0 .8rem}"
-       "table{border-collapse:collapse;width:100%;font-size:.83rem}"
-       "th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid #ececf0;vertical-align:top}"
-       "th{font-weight:600;color:#4a4a52;background:#fafafc}"
-       "td.num{text-align:right;font-variant-numeric:tabular-nums}"
-       ".ok{color:#00662a}.warn{color:#8a5b00}.critical{color:#b91414;font-weight:600}"
-       "tr.human td{background:#fbfaf4}"
-       ".human-tag{display:inline-block;background:#8a5b00;color:#fff;border-radius:3px;"
-       "padding:.02rem .3rem;font-size:.72rem;margin-right:.35rem}"
-       "code{background:#f0f0f4;padding:.08rem .28rem;border-radius:3px;"
-       "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.79rem}"
-       "ul{margin:.2rem 0 .2rem 1.1rem;padding:0}li{margin:.15rem 0}"
-       "footer{max-width:1180px;margin:0 auto 2rem;padding:0 1rem;color:#6b6b70;font-size:.78rem}"))
+(def ^:private action-gate-rows
+  ;; Static description of this actor's own closed op contract, read off
+  ;; `softdrinkops.governor` (`allowed-ops`, `high-stakes`,
+  ;; `always-escalate-ops`, `confidence-floor`). This is DOCUMENTATION OF
+  ;; FIXED BEHAVIOUR, not runtime telemetry -- unlike every other table on
+  ;; this page, no part of it is derived from the run above.
+  ["        <tr><td><code>:log-production-batch</code></td><td><span class=\"warn\">ALWAYS human sign-off &middot; never auto at any confidence &middot; every batch-parameter rule recomputed independently</span></td></tr>"
+   "        <tr><td><code>:coordinate-shipment</code></td><td><span class=\"warn\">ALWAYS human sign-off &middot; never auto at any confidence</span></td></tr>"
+   "        <tr><td><code>:flag-food-safety-concern</code></td><td><span class=\"warn\">ALWAYS human sign-off &middot; a food-safety concern is never resolved by advisor confidence alone</span></td></tr>"
+   "        <tr><td><code>:schedule-maintenance</code></td><td><span class=\"ok\">auto-commits when the Governor is clean and confidence is at or above the floor</span></td></tr>"
+   "        <tr><td><em>anything else</em></td><td><span class=\"critical\">HARD block &middot; outside the closed allowlist &middot; mixing-tank / carbonator / filling-line control and food-safety certification are not this actor's to propose</span></td></tr>"])
+
+(def ^:private unreached-rule
+  ;; Honest gap statement. `batch-not-registered` is the one hard rule this
+  ;; console does not exercise, because reaching it requires feeding the
+  ;; actor a batch id that does not exist -- and every id on this page is a
+  ;; real key of `store/demo-batches`. It is covered by
+  ;; `run-operation-shipment-batch-not-registered-test` instead.
+  "batch-not-registered")
 
 (defn render
-  "Renders the console from the `{:store :steps}` map `run-demo!` returned."
-  [{:keys [store steps]}]
-  (let [ledger (vec (store/audit-trail store))
-        batches (store/all-batches store)
-        hard-holds (->> steps
-                        (filter #(= :proposal (:kind %)))
-                        (filter #(= :hard-hold (disposition %)))
-                        (map #(-> % :result :facts first)))
-        fired-rules (->> hard-holds (mapcat :basis) set)
-        proposals (filter #(= :proposal (:kind %)) steps)]
+  "Render the operator console from a store `db` that has already been
+  through `run-demo!`. `now` is the same clock value the seed was built
+  with; only fixed offsets from it reach the page."
+  [db now]
+  (let [ledger (vec (store/audit-trail db))
+        batches (store/all-batches db)
+        reached (->> ledger (filter hard-hold?) (mapcat :basis) (map name) distinct sort)]
     (str
-     "<!DOCTYPE html>\n"
-     "<html lang=\"en\">\n"
-     "<head><meta charset=\"utf-8\">"
+     "<html><head><meta charset=\"utf-8\">"
      "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">"
-     "<meta name=\"color-scheme\" content=\"light\">"
-     "<title>Operator console · cloud-itonami-isic-1104 · softdrinkops</title>"
-     "<style>" css "</style></head>\n<body>\n"
+     "<title>cloud-itonami-isic-1104 &middot; soft-drink &amp; bottled-water manufacturing</title><style>"
+     (jp-go-dds.skin/dds+skin)
+     "</style></head><body>\n"
      "<header class=\"bar\">\n"
-     "  <h1>Soft drink &amp; bottled water manufacturing coordination (ISIC 1104) — Operator Console</h1>\n"
-     "  <div class=\"badge\">read-only sample · generated at build time by <code>softdrinkops.render-html</code> from the real Governor · not equipment control · not certification authority</div>\n"
+     "  <h1>Soft drink &amp; bottled water manufacturing (ISIC 1104) — Operator Console</h1>\n"
+     "  <span class=\"badge\">read-only sample · governor-gated · batch logging and shipment always human-approved</span>\n"
      "</header>\n"
      "<main>\n"
 
      "  <section class=\"card\">\n"
      "    <h2>Production batches</h2>\n"
-     "    <p class=\"muted\">Registered plant records from <code>softdrinkops.store/seed-db</code>. Every number below is a documented batch key — no presentation-only field. Filling-line calibration dates are in the seed and are read by the Governor, but are not shown here because they are measured against the current clock and would make this page non-reproducible.</p>\n"
+     "    <p class=\"muted\">Build-time snapshot — generated from <code>softdrinkops.store</code> by <code>softdrinkops.render-html</code> (<code>clojure -M:dev:render-html</code>), driving the real <code>softdrinkops.operation/run-operation</code> against <code>softdrinkops.governor/check</code>. Every disposition below is the Governor's own verdict.</p>\n"
      "    <table>\n"
-     "      <thead><tr><th>Batch</th><th>Product</th><th>Jurisdiction</th><th>CO₂ vol</th><th>Brix %</th><th>Preserv. ppm</th><th>CFU/mL</th><th>TDS mg/L</th><th>Fill var. mL</th><th>CIP</th><th>Plant state / last Governor disposition</th></tr></thead>\n"
+     "      <thead><tr><th>Batch</th><th>Product type</th><th>Jurisdiction</th><th>Lifecycle</th><th>Last disposition</th></tr></thead>\n"
      "      <tbody>\n"
      (str/join "\n" (map (partial batch-row ledger) batches)) "\n"
      "      </tbody>\n"
@@ -431,63 +443,62 @@
      "  </section>\n"
 
      "  <section class=\"card\">\n"
-     "    <h2>Action gate</h2>\n"
-     "    <p class=\"muted\">Derived from <code>softdrinkops.governor</code>'s own <code>allowed-ops</code>, <code>high-stakes</code>, <code>always-escalate-ops</code> and <code>confidence-floor</code> — not from prose. Anything outside this closed allowlist (direct mixing / carbonation / filling-line control, or a food-safety-certification decision) is refused unconditionally as <code>op-not-allowed</code>.</p>\n"
+     "    <h2>Independently recomputed parameters</h2>\n"
+     "    <p class=\"muted\">Measured value / limit. Actuals are read off the batch record; per-product limits come from <code>softdrinkops.facts/product-types</code>. The Governor recomputes every one of these itself — the advisor's confidence never substitutes for them. Colour is the Governor's own predicate; the hold decision is its verdict.</p>\n"
      "    <table>\n"
-     "      <thead><tr><th>Proposal op</th><th>Gate</th></tr></thead>\n"
+     "      <thead><tr><th>Batch</th><th>CO₂ vol</th><th>Brix %</th><th>Preservative ppm</th><th>Declared additives</th><th>Plate count CFU/mL</th><th>TDS mg/L</th><th>Fill drift mL</th><th>CIP score</th><th>Since calibration</th><th>Evidence</th><th>Screens</th></tr></thead>\n"
      "      <tbody>\n"
-     (str/join "\n" (map gate-row (sort-by name governor/allowed-ops))) "\n"
-     "        <tr><td><code>anything else</code></td><td><span class=\"critical\">HARD HOLD · op-not-allowed — the actor has no authority to make the proposal at all</span></td></tr>\n"
+     (str/join "\n" (map (partial param-row now) batches)) "\n"
      "      </tbody>\n"
      "    </table>\n"
      "  </section>\n"
 
      "  <section class=\"card\">\n"
-     "    <h2>This run</h2>\n"
-     "    <p class=\"muted\">"
-     (count proposals) " proposals driven through <code>operation/run-operation</code>, "
-     (count hard-holds) " of them HARD-held by the Governor on "
-     (count fired-rules) " distinct rules. Rows shaded in amber are human operator actions taken outside the actor — the Governor escalated, a person signed off, and <code>store/log-batch</code> / <code>store/finalize-shipment</code> moved the plant record.</p>\n"
+     "    <h2>Action gate (SoftDrinkOps Governor)</h2>\n"
+     "    <p class=\"muted\">Fixed contract, not telemetry — described from <code>softdrinkops.governor</code>'s <code>allowed-ops</code>, <code>always-escalate-ops</code> and <code>confidence-floor</code>. Hard violations cannot be overridden by any approval; the two actuation events (batch logging, shipment) and any food-safety flag always require a human.</p>\n"
      "    <table>\n"
-     "      <thead><tr><th>Step</th><th>Op</th><th>Batch</th><th>Disposition</th><th>Rules fired</th></tr></thead>\n"
+     "      <thead><tr><th>Op</th><th>Gate</th></tr></thead>\n"
      "      <tbody>\n"
-     (str/join "\n" (map step-row steps)) "\n"
+     (str/join "\n" action-gate-rows) "\n"
      "      </tbody>\n"
      "    </table>\n"
      "  </section>\n"
 
      "  <section class=\"card\">\n"
-     "    <h2>HARD holds, in the Governor's own words</h2>\n"
-     "    <p class=\"muted\">Rule names and explanations are read out of the <code>:violations</code> maps <code>softdrinkops.governor</code> produced during this run.</p>\n"
-     "    <ul>\n"
-     (str/join "\n" (map hold-detail-item hard-holds)) "\n"
-     "    </ul>\n"
+     "    <h2>Hard rules reached in this run</h2>\n"
+     "    <p class=\"muted\">Rule names taken from the <code>:basis</code> of the Governor's own hold facts below — nothing here is typed by hand.</p>\n"
+     "    <p>" (str/join " · " (map #(str "<code>" (esc %) "</code>") reached)) "</p>\n"
+     "    <p class=\"muted\">Not exercised here: <code>" (esc unreached-rule) "</code> — reaching it needs a batch id that does not exist, and every id on this page is a real key of <code>store/demo-batches</code>. It is covered in <code>test/softdrinkops/operation_test.cljc</code> instead.</p>\n"
      "  </section>\n"
 
      "  <section class=\"card\">\n"
      "    <h2>Audit ledger (this run)</h2>\n"
-     "    <p class=\"muted\">The append-only ledger as <code>store/append-fact</code> left it. Every row is a <code>:governor-hold</code>, because <code>operation/run-operation</code> returns <code>:facts []</code> on a clean verdict and emits no commit fact — so the two operator sign-offs above have no ledger row. That is a real gap in this actor, stated rather than papered over.</p>\n"
+     "    <p class=\"muted\">Append-only decision-fact log. <code>governor-hold</code> facts are the Governor's verbatim output; a hold carrying rule names is a hard, un-overridable block, a hold with none is the soft gate that routes the proposal to a human.</p>\n"
      "    <table>\n"
-     "      <thead><tr><th>Fact</th><th>Op</th><th>Batch</th><th>Disposition</th><th>Basis</th><th>Confidence</th></tr></thead>\n"
+     "      <thead><tr><th>Fact</th><th>Op</th><th>Batch</th><th>Disposition</th></tr></thead>\n"
      "      <tbody>\n"
      (str/join "\n" (map ledger-row ledger)) "\n"
      "      </tbody>\n"
      "    </table>\n"
      "  </section>\n"
+
      "</main>\n"
-     "<footer>Regenerate with <code>clojure -M:dev:render-html</code>. Output is byte-identical across runs. Hard rules exercised by this scenario: "
-     (esc (count fired-rules))
-     "; <code>batch-not-registered</code> is not exercised, because reaching it requires driving a batch id the seed never registered.</footer>\n"
-     "</body>\n</html>\n")))
+     "<footer>\n"
+     "  <p>Open occupation blueprint — no invented usage or revenue metrics. This actor coordinates plant operations; it does not operate mixing tanks, carbonators or filling lines, and it holds no food-safety-certification authority.</p>\n"
+     "</footer>\n"
+     "</body></html>\n")))
 
 (defn -main [& args]
   (let [out (or (first args) "docs/samples/operator-console.html")
-        run (run-demo!)
-        html (render run)
-        f (java.io.File. ^String out)]
-    (some-> (.getParentFile f) .mkdirs)
-    (spit f html)
+        ;; The single clock read in the whole generator: the seed's
+        ;; calibration offsets and the rendered "N days since calibration"
+        ;; figures are both measured against this one value, so both are
+        ;; constants on every run.
+        now (System/currentTimeMillis)
+        db (run-demo! now)
+        ledger (store/audit-trail db)
+        html (render db now)]
+    (spit out html)
     (println "wrote" out
-             "(" (count (store/audit-trail (:store run))) "ledger facts,"
-             (count (filter #(= :proposal (:kind %)) (:steps run))) "proposals,"
-             (count (store/all-batches (:store run))) "batches )")))
+             "(" (count ledger) "ledger facts,"
+             (count (filter hard-hold? ledger)) "hard holds )")))
