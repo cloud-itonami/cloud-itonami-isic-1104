@@ -17,7 +17,7 @@
      skeleton and `softdrinkops.sim` prints \"not yet implemented\". The real
      driver surface available today is `operation/run-operation`, which is
      exactly what this namespace calls -- the same call shape the repo's own
-     `test/softdrinkops/operation_test.cljc` uses.
+     `test/softdrinkops/operation_test.cljk` uses.
   2. `operation/run-operation` returns `{:ok? true :facts []}` on a clean
      verdict. It emits NO commit fact. The audit ledger can therefore only
      ever contain `:governor-hold` facts, and the status column below has no
