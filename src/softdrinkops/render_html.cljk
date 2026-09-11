@@ -34,7 +34,7 @@
   in the seed (the Governor measures them against the current clock) but are
   never rendered, so two consecutive runs are byte-identical.
 
-  Usage: `clojure -M:dev:render-html [out-file]`
+  Usage: `kbb -M:dev:render-html [out-file]`
   (default `docs/samples/operator-console.html`)."
   (:require [kotoba.lang.text :as str]
             [softdrinkops.facts :as facts]
@@ -475,7 +475,7 @@
      "    </table>\n"
      "  </section>\n"
      "</main>\n"
-     "<footer>Regenerate with <code>clojure -M:dev:render-html</code>. Output is byte-identical across runs. Hard rules exercised by this scenario: "
+     "<footer>Regenerate with <code>kbb -M:dev:render-html</code>. Output is byte-identical across runs. Hard rules exercised by this scenario: "
      (esc (count fired-rules))
      "; <code>batch-not-registered</code> is not exercised, because reaching it requires driving a batch id the seed never registered.</footer>\n"
      "</body>\n</html>\n")))

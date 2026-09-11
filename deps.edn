@@ -12,7 +12,7 @@
         io.github.kotoba-lang/langgraph
         {:local/root "../../kotoba-lang/langgraph"}}}
   :run {:main-opts ["-m" "softdrinkops.sim"]}
-  ;; clojure -M:dev:render-html [out-file]
+  ;; kbb -M:dev:render-html [out-file]
   ;; -> regenerate docs/samples/operator-console.html by driving the real
   ;;    store -> operation -> governor stack (flagship checklist item 2).
   :render-html {:main-opts ["-m" "softdrinkops.render-html"]}
