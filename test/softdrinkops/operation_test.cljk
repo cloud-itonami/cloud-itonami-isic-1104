@@ -1,5 +1,5 @@
 (ns softdrinkops.operation-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [softdrinkops.operation :as operation]
             [softdrinkops.governor :as governor]))
 
