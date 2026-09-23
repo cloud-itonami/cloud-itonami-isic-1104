@@ -1,5 +1,5 @@
 (ns softdrinkops.registry-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [softdrinkops.registry :as registry]))
 
 ;; ──────────────────────── Carbonation Tolerance ──────────────────────

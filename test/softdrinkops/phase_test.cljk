@@ -1,5 +1,5 @@
 (ns softdrinkops.phase-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [softdrinkops.phase :as phase]))
 
 ;; ──────────────────────── Phase Validity ──────────────────────
