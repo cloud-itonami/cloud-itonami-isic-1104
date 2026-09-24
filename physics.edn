@@ -1,0 +1,44 @@
+;; What this vertical's robot physically does, declared for
+;; kotoba.robotics.process (kotoba-lang/robotics). `kbb -M:dev:physics` runs it.
+;;
+;; README has no "Robotics premise" section; blueprint.edn declares
+;; :itonami.blueprint/robotics true. From the README scope (water/ingredient
+;; intake -> syrup/water blending -> carbonation -> filling -> finished-product
+;; logistics), the plant's physical work is moving liquid and moving pallets:
+;; draining a blend tank before a flavour changeover, pumping finished beverage
+;; from the blend tank to the filler bowl, and carrying palletised cases of
+;; bottles from the end of the filling line to the finished-goods store.
+;;
+;; Every number without a cited source is marked `estimate` in its :basis.
+;; Replacing an estimate with a sourced value is this bot's growth work.
+{:physics/schema "itonami.physical-ai.spec.v1"
+ :repo "cloud-itonami/cloud-itonami-isic-1104"
+ :cases
+ [{:id :blend-tank-drain
+   :kind :tank-drain
+   :procedure "drain a syrup/water blend tank through its bottom outlet valve before a flavour changeover and CIP"
+   :params {:tank-area-m2 3.14 :h0-m 2.4 :h-target-m 0.05 :cd 0.62 :q-in-m3s 0.0}
+   :sweep {:param :orifice-area-m2 :values [0.0015 0.003 0.005 0.008 0.012]}
+   :quantity :time-to-target-s
+   :limit {:max 1200.0 :basis "estimate: a 20-minute share of a flavour-changeover window on a single blend tank"}
+   :boundary {:lo 0.0005 :hi 0.02}}
+  {:id :blend-to-filler-transfer
+   :kind :pipe-flow
+   :procedure "pump finished beverage from the blend tank to the filler bowl through a stainless product line"
+   :params {:diameter-m 0.0635 :length-m 45.0 :roughness-m 1.5e-6
+            :density-kg-m3 1040.0 :viscosity-pa-s 1.6e-3 :pump-efficiency 0.6 :elevation-m 4.0}
+   :sweep {:param :q-m3s :values [0.002 0.004 0.006 0.009 0.012]}
+   :quantity :pressure-drop-pa
+   :limit {:max 2.5e5 :basis "estimate: 2.5 bar differential head of a sanitary centrifugal product pump at its duty point"}
+   :boundary {:lo 0.001 :hi 0.03}}
+  {:id :pallet-to-warehouse
+   :kind :transport
+   :procedure "AGV carries an 800 kg stretch-wrapped pallet of bottle cases from the end of the filling line to the finished-goods store"
+   :params {:mass-kg 450.0 :distance-m 90.0 :v-max-mps 1.5 :a-max-mps2 0.5
+            :payload-kg 800.0 :drive-force-n 2400.0 :crr 0.012
+            :cog-height-m 0.35 :payload-cog-height-m 0.95 :support-half-length-m 0.55
+            :max-time-s 1200.0}
+   :sweep {:param :brake-decel-mps2 :values [0.5 1.5 3.0 4.5 6.0]}
+   :quantity :min-tipover-margin
+   :limit {:min 0.3 :basis "estimate: keep at least 30 % of the static restoring moment in reserve for a tall pallet when the AGV brakes (service stop up to emergency stop)"}
+   :boundary {:lo 0.3 :hi 8.0}}]}
